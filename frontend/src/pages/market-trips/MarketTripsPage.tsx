@@ -168,9 +168,15 @@ export default function MarketTripsPage() {
                       <span className="text-sm text-gray-600">{(trip as any).supplier?.name || (trip.supplier_id ? `#${trip.supplier_id}` : '—')}</span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sc.bg} ${sc.text}`}>
-                        {getStatusLabel(trip.status)}
-                      </span>
+                      {(trip as any).pod_uploaded ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" />Completed
+                        </span>
+                      ) : (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${sc.bg} ${sc.text}`}>
+                          {getStatusLabel(trip.status)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-sm font-semibold text-gray-800">₹{Number(trip.client_rate || 0).toLocaleString('en-IN')}</span>

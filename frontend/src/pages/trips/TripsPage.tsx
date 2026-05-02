@@ -216,16 +216,20 @@ export default function TripsPage() {
       header: 'Status',
       render: (t) => {
         if ((t as any)._kind === 'market') {
+          if ((t as any).pod_uploaded) {
+            return <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-green-50 text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" />Completed</span>;
+          }
           const mStatus = ((t as any).status || '').toLowerCase();
-          const mColors: Record<string, string> = {
-            pending: 'bg-gray-100 text-gray-700',
-            assigned: 'bg-blue-100 text-blue-700',
-            in_transit: 'bg-orange-100 text-orange-700',
-            delivered: 'bg-green-100 text-green-700',
-            settled: 'bg-teal-100 text-teal-700',
-            cancelled: 'bg-red-100 text-red-700',
+          const mMap: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+            pending:    { bg: 'bg-gray-50',   text: 'text-gray-600',   dot: 'bg-gray-400',   label: 'Pending' },
+            assigned:   { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Assigned' },
+            in_transit: { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500', label: 'In Transit' },
+            delivered:  { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500',  label: 'Completed' },
+            settled:    { bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-500',   label: 'Settled' },
+            cancelled:  { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500',    label: 'Cancelled' },
           };
-          return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${mColors[mStatus] || 'bg-gray-100 text-gray-700'}`}>{mStatus.replace('_', ' ')}</span>;
+          const m = mMap[mStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', dot: 'bg-gray-400', label: mStatus.replace('_', ' ') };
+          return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${m.bg} ${m.text}`}><span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />{m.label}</span>;
         }
         const normalized = normalizeTripStatus(t.status);
         const color = TRIP_STATUS_COLORS[normalized] || 'bg-gray-100 text-gray-700';
