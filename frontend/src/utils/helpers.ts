@@ -21,18 +21,8 @@ export async function openDocumentUrl(fileUrl: string | null | undefined): Promi
       window.open(fileUrl, '_blank', 'noreferrer');
     }
   } else if (fileUrl.includes('X-Amz-') || fileUrl.includes('amazonaws.com')) {
-    // Pre-check S3 presigned URL is valid before opening
-    try {
-      const res = await fetch(fileUrl, { method: 'HEAD' });
-      if (!res.ok) {
-        // Dynamic import to avoid circular deps
-        const { toast } = await import('react-hot-toast');
-        toast.error('Document not available. Please re-upload.');
-        return;
-      }
-    } catch {
-      // network error — open anyway, browser will show error
-    }
+    // Presigned S3 URLs are method-specific (GetObject) — HEAD returns 403.
+    // The backend already validates the object exists before presigning, so open directly.
     window.open(fileUrl, '_blank', 'noreferrer');
   } else {
     window.open(fileUrl, '_blank', 'noreferrer');
