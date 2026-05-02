@@ -30,7 +30,10 @@ async def list_market_trips(
         row["margin_pct"] = round(t.margin_pct, 2)
         if row.get("pod_file_url"):
             try:
-                row["pod_file_url"] = await presign_stored_url(row["pod_file_url"], expires_in=7200) or row["pod_file_url"]
+                pod_url = row["pod_file_url"]
+                if pod_url.startswith("/uploads/") or pod_url.startswith("/api/"):
+                    pod_url = "https://api.kavyatransports.com" + pod_url
+                row["pod_file_url"] = await presign_stored_url(pod_url, expires_in=7200) or pod_url
             except Exception:
                 pass
         items.append(row)
@@ -55,7 +58,10 @@ async def get_market_trip(
     if data.get("pod_file_url"):
         try:
             from app.services.s3_service import presign_stored_url
-            data["pod_file_url"] = await presign_stored_url(data["pod_file_url"], expires_in=7200) or data["pod_file_url"]
+            pod_url = data["pod_file_url"]
+            if pod_url.startswith("/uploads/") or pod_url.startswith("/api/"):
+                pod_url = "https://api.kavyatransports.com" + pod_url
+            data["pod_file_url"] = await presign_stored_url(pod_url, expires_in=7200) or pod_url
         except Exception:
             pass
     return APIResponse(success=True, data=data)

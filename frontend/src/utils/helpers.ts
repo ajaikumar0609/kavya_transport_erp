@@ -24,6 +24,9 @@ export async function openDocumentUrl(fileUrl: string | null | undefined): Promi
     // Presigned S3 URLs are method-specific (GetObject) — HEAD returns 403.
     // The backend already validates the object exists before presigning, so open directly.
     window.open(fileUrl, '_blank', 'noreferrer');
+  } else if (fileUrl.startsWith('/uploads/') || fileUrl.startsWith('/api/')) {
+    // Local server file — must be served from the backend API, not the frontend domain.
+    window.open(`https://api.kavyatransports.com${fileUrl}`, '_blank', 'noreferrer');
   } else {
     window.open(fileUrl, '_blank', 'noreferrer');
   }
