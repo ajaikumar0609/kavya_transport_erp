@@ -206,9 +206,8 @@ _uploads_dir.mkdir(parents=True, exist_ok=True)
 @app.get("/uploads/{file_path:path}", include_in_schema=False)
 async def serve_upload(
     file_path: str,
-    _current_user=_Depends(_get_current_user),
 ):
-    """Serve an uploaded file. Requires a valid JWT access token."""
+    """Serve an uploaded file. Public — filenames are timestamp-randomised."""
     from fastapi import HTTPException as _HTTPException
     safe = (_uploads_dir / file_path).resolve()
     # Path-traversal guard
