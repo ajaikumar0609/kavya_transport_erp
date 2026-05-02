@@ -366,9 +366,6 @@ export default function ClientDetailPage() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-gray-900">Uploaded Documents ({clientDocuments.length})</h3>
-          <button onClick={openAddDoc} className="btn-primary text-sm flex items-center gap-1.5">
-            <Plus size={14} /> Add Document
-          </button>
         </div>
         {docsLoading ? (
           <div className="py-6 text-center text-gray-400">Loading documents...</div>
@@ -376,7 +373,6 @@ export default function ClientDetailPage() {
           <div className="py-10 text-center">
             <FileText size={36} className="mx-auto mb-2 text-gray-300" />
             <p className="text-gray-500 text-sm">No documents uploaded yet.</p>
-            <button onClick={openAddDoc} className="mt-3 text-primary-600 hover:underline text-sm">Upload your first document</button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -435,15 +431,6 @@ export default function ClientDetailPage() {
               placeholder="e.g. GST Certificate, PAN Card"
               className="input w-full"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Document Type</label>
-            <select value={docType} onChange={e => setDocType(e.target.value)} className="input w-full">
-              <option value="contract">Contract</option>
-              <option value="invoice">Invoice</option>
-              <option value="tax_receipt">Tax Receipt</option>
-              <option value="other">Other</option>
-            </select>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">File <span className="text-red-500">*</span></label>
