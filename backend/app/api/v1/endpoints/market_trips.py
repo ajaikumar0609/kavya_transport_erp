@@ -320,6 +320,16 @@ async def upload_pod(
     trip.pod_file_url = url
     trip.pod_uploaded = True
     trip.pod_uploaded_at = datetime.utcnow()
+
+    # Also mark all LRs for the same job as pod_uploaded so LR list shows "Uploaded"
+    if trip.job_id:
+        from app.models.postgres.lr import LR
+        lr_result = await db.execute(select(LR).where(LR.job_id == trip.job_id))
+        for lr in lr_result.scalars().all():
+            lr.pod_uploaded = True
+            if not lr.pod_file_url:
+                lr.pod_file_url = url
+
     await db.commit()
 
     return APIResponse(success=True, data={"url": url}, message="POD uploaded")
