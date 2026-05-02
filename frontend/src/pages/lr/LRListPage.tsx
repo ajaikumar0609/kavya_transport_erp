@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { lrService } from '@/services/dataService';
+import { lrService, marketTripService } from '@/services/dataService';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import DataTable, { Column } from '@/components/common/DataTable';
 import { Modal, StatusBadge } from '@/components/common/Modal';
@@ -54,7 +54,14 @@ export default function LRListPage() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['lr', filters, transportTab, myLrs],
-    queryFn: () => lrService.list({ ...filters, transport_type: transportTab || undefined, my_lrs: myLrs || undefined } as any),
+    queryFn: () => lrService.list({ ...filters, transport_type: transportTab === 'fleet' ? 'fleet' : undefined, my_lrs: myLrs || undefined } as any),
+    enabled: transportTab !== 'market',
+  });
+
+  const { data: marketData, isLoading: marketLoading, refetch: marketRefetch } = useQuery({
+    queryKey: ['market-trips-lr', filters, transportTab],
+    queryFn: () => marketTripService.list({ page: filters.page, limit: filters.page_size, search: (filters as any).search } as any),
+    enabled: transportTab !== 'fleet',
   });
 
   const { data: jobsData } = useQuery({
@@ -171,58 +178,115 @@ export default function LRListPage() {
   const columns: Column<LR>[] = [
     {
       key: 'lr_number',
-      header: 'LR Number',
+      header: 'Type / LR #',
       sortable: true,
-      render: (lr) => <span className="font-mono text-sm font-medium text-primary-600">{lr.lr_number}</span>,
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          return (
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700 uppercase tracking-wide">Market</span>
+              <span className="font-mono text-sm font-medium text-primary-600">
+                {(lr as any).job_id ? `Job #${(lr as any).job_id}` : `#${lr.id}`}
+              </span>
+            </div>
+          );
+        }
+        return (
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase tracking-wide">Fleet</span>
+            <span className="font-mono text-sm font-medium text-primary-600">{lr.lr_number}</span>
+          </div>
+        );
+      },
     },
     {
       key: 'consignor_name',
-      header: 'Consignor',
-      render: (lr) => (
-        <div>
-          <p className="font-medium text-gray-900 text-sm">{lr.consignor_name}</p>
-          {lr.consignor_gstin && <p className="text-xs text-gray-400">GST: {lr.consignor_gstin}</p>}
-        </div>
-      ),
+      header: 'Consignor / Vehicle',
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          return (
+            <div className="flex items-center gap-1.5">
+              <Truck size={14} className="text-gray-400" />
+              <span className="text-sm text-gray-800 font-medium">{(lr as any).vehicle_registration || '—'}</span>
+            </div>
+          );
+        }
+        return (
+          <div>
+            <p className="font-medium text-gray-900 text-sm">{lr.consignor_name}</p>
+            {lr.consignor_gstin && <p className="text-xs text-gray-400">GST: {lr.consignor_gstin}</p>}
+          </div>
+        );
+      },
     },
     {
       key: 'consignee_name',
-      header: 'Consignee',
-      render: (lr) => (
-        <div>
-          <p className="font-medium text-gray-900 text-sm">{lr.consignee_name}</p>
-          {lr.consignee_gstin && <p className="text-xs text-gray-400">GST: {lr.consignee_gstin}</p>}
-        </div>
-      ),
+      header: 'Consignee / Driver',
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          return (
+            <div>
+              <p className="text-sm text-gray-800">{(lr as any).driver_name || '—'}</p>
+              {(lr as any).driver_phone && <p className="text-xs text-gray-400">{(lr as any).driver_phone}</p>}
+            </div>
+          );
+        }
+        return (
+          <div>
+            <p className="font-medium text-gray-900 text-sm">{lr.consignee_name}</p>
+            {lr.consignee_gstin && <p className="text-xs text-gray-400">GST: {lr.consignee_gstin}</p>}
+          </div>
+        );
+      },
     },
     {
       key: 'route',
-      header: 'Route',
-      render: (lr) => (
-        <div className="flex items-center gap-1 text-sm">
-          <span>{lr.origin}</span>
-          <span className="text-gray-300">→</span>
-          <span>{lr.destination}</span>
-        </div>
-      ),
+      header: 'Route / Supplier',
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          return <span className="text-sm text-gray-600">{(lr as any).supplier?.name || ((lr as any).supplier_id ? `Supplier #${(lr as any).supplier_id}` : '—')}</span>;
+        }
+        return (
+          <div className="flex items-center gap-1 text-sm">
+            <span>{lr.origin}</span>
+            <span className="text-gray-300">→</span>
+            <span>{lr.destination}</span>
+          </div>
+        );
+      },
     },
     {
       key: 'freight_amount',
-      header: 'Freight',
+      header: 'Freight / Rate',
       sortable: true,
-      render: (lr) => `₹${Number((lr.freight_amount || 0) ?? 0).toLocaleString('en-IN')}`,
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          return <span className="text-sm font-semibold text-gray-800">₹{Number((lr as any).client_rate || 0).toLocaleString('en-IN')}</span>;
+        }
+        return `₹${Number((lr.freight_amount || 0) ?? 0).toLocaleString('en-IN')}`;
+      },
     },
     {
       key: 'payment_mode',
-      header: 'Payment Mode',
-      render: (lr) => <span className="capitalize text-sm">{lr.payment_mode?.replace('_', ' ')}</span>,
+      header: 'Payment / Margin',
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          const margin = Number((lr as any).client_rate || 0) - Number((lr as any).contractor_rate || 0);
+          return <span className={`text-sm font-semibold ${margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>₹{margin.toLocaleString('en-IN')}</span>;
+        }
+        return <span className="capitalize text-sm">{lr.payment_mode?.replace('_', ' ')}</span>;
+      },
     },
     {
       key: 'pod_uploaded',
       header: 'POD',
       render: (lr) => (
         <div className="flex items-center gap-1">
-          {lr.status === 'pod_received' ? (
+          {(lr as any)._kind === 'market' ? (
+            (lr as any).pod_uploaded
+              ? <span className="badge-warning">Uploaded</span>
+              : <span className="badge-gray">Pending</span>
+          ) : lr.status === 'pod_received' ? (
             <span className="badge-success flex items-center gap-1"><CheckCircle size={12} /> Received</span>
           ) : lr.pod_uploaded ? (
             <span className="badge-warning">Uploaded</span>
@@ -235,30 +299,52 @@ export default function LRListPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (lr) => <StatusBadge status={lr.status} />,
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') {
+          const mStatus = ((lr as any).status || '').toLowerCase();
+          const mColors: Record<string, string> = {
+            pending: 'bg-gray-100 text-gray-700',
+            assigned: 'bg-blue-100 text-blue-700',
+            in_transit: 'bg-orange-100 text-orange-700',
+            delivered: 'bg-green-100 text-green-700',
+            settled: 'bg-teal-100 text-teal-700',
+            cancelled: 'bg-red-100 text-red-700',
+          };
+          return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${mColors[mStatus] || 'bg-gray-100 text-gray-700'}`}>{mStatus.replace('_', ' ')}</span>;
+        }
+        return <StatusBadge status={lr.status} />;
+      },
     },
     {
       key: 'actions',
       header: 'Actions',
-      render: (lr) => (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => handleEdit(lr)} className="p-1.5 rounded-md hover:bg-gray-100" title="Edit">
-            <Pencil size={14} className="text-gray-600" />
-          </button>
-          {lr.status !== 'cancelled' && lr.status !== 'delivered' && (
-            <button onClick={() => cancelMutation.mutate(lr.id)} className="p-1.5 rounded-md hover:bg-amber-50" title="Cancel LR">
-              <XCircle size={14} className="text-amber-600" />
+      render: (lr) => {
+        if ((lr as any)._kind === 'market') return null;
+        return (
+          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => handleEdit(lr)} className="p-1.5 rounded-md hover:bg-gray-100" title="Edit">
+              <Pencil size={14} className="text-gray-600" />
             </button>
-          )}
-          <button onClick={() => handleDelete(lr)} className="p-1.5 rounded-md hover:bg-red-50" title="Delete">
-            <Trash2 size={14} className="text-red-600" />
-          </button>
-        </div>
-      ),
+            {lr.status !== 'cancelled' && lr.status !== 'delivered' && (
+              <button onClick={() => cancelMutation.mutate(lr.id)} className="p-1.5 rounded-md hover:bg-amber-50" title="Cancel LR">
+                <XCircle size={14} className="text-amber-600" />
+              </button>
+            )}
+            <button onClick={() => handleDelete(lr)} className="p-1.5 rounded-md hover:bg-red-50" title="Delete">
+              <Trash2 size={14} className="text-red-600" />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
-  const rows = safeArray<LR>(data);
+  const fleetRows = safeArray<LR>(data).map((lr) => ({ ...lr, _kind: 'fleet' }));
+  const marketRows = safeArray<LR>((marketData as any)?.data ?? marketData).map((t: any) => ({ ...t, _kind: 'market' }));
+  const rows: LR[] =
+    transportTab === 'fleet' ? fleetRows :
+    transportTab === 'market' ? marketRows :
+    [...fleetRows, ...marketRows];
 
   const handleExportPdf = () => {
     exportTableToPdf({
@@ -327,18 +413,18 @@ export default function LRListPage() {
       <DataTable
         columns={columns}
         data={rows}
-        total={data?.total || 0}
+        total={transportTab === 'fleet' ? (data?.total || 0) : transportTab === 'market' ? ((marketData as any)?.pagination?.total || marketRows.length) : (fleetRows.length + marketRows.length)}
         page={filters.page}
         pageSize={filters.page_size}
-        isLoading={isLoading}
+        isLoading={isLoading || marketLoading}
         searchPlaceholder="Search LR number, consignor..."
         onSearch={(q) => setFilters({ ...filters, search: q, page: 1 })}
         onPageChange={(p) => setFilters({ ...filters, page: p })}
         onSort={(key, order) => setFilters({ ...filters, sort_by: key, sort_order: order })}
-        onRowClick={(lr) => navigate(`/lr/${lr.id}`)}
-        onAdd={!isAdmin && hasPermission('lr:create') ? () => setIsCreateOpen(true) : undefined}
+        onRowClick={(lr) => (lr as any)._kind === 'market' ? navigate(`/market-trips/${lr.id}`) : navigate(`/lr/${lr.id}`)}
+        onAdd={!isAdmin && hasPermission('lr:create') && transportTab !== 'market' ? () => setIsCreateOpen(true) : undefined}
         addLabel="Create LR"
-        onRefresh={() => refetch()}
+        onRefresh={() => { void refetch(); void marketRefetch(); }}
         onExport={isAdmin ? undefined : handleExportPdf}
       />
 
