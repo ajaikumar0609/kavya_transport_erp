@@ -275,17 +275,13 @@ export default function MarketTripDetailPage() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setViewDoc({ url: t.pod_file_url, title: `POD — Market Trip #${t.id}` })}
+                    onClick={() => void openDocumentUrl(t.pod_file_url)}
                     className="w-full mt-1 rounded-lg overflow-hidden border border-green-200 hover:border-green-400 transition-colors group relative"
                   >
-                    {/\.(jpe?g|png|gif|webp|heic)$/i.test(t.pod_file_url) ? (
-                      <img src={t.pod_file_url} alt="POD" className="w-full h-36 object-cover group-hover:opacity-90 transition-opacity" />
-                    ) : (
-                      <div className="w-full h-20 flex flex-col items-center justify-center bg-green-50 gap-1">
-                        <FileText size={28} className="text-green-400" />
-                        <span className="text-xs text-green-600">View POD Document</span>
-                      </div>
-                    )}
+                    <div className="w-full h-20 flex flex-col items-center justify-center bg-green-50 gap-1">
+                      <FileText size={28} className="text-green-400" />
+                      <span className="text-xs text-green-600">View POD Document</span>
+                    </div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 transition-opacity rounded-lg">
                       <span className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded">Click to view</span>
                     </div>

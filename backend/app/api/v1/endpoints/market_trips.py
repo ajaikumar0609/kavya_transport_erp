@@ -22,11 +22,17 @@ async def list_market_trips(
 ):
     trips, total = await market_trip_service.list_market_trips(db, page, limit, search, status, supplier_id)
     pages = (total + limit - 1) // limit
+    from app.services.s3_service import presign_stored_url
     items = []
     for t in trips:
         row = {c.key: getattr(t, c.key) for c in t.__table__.columns}
         row["margin"] = t.margin
         row["margin_pct"] = round(t.margin_pct, 2)
+        if row.get("pod_file_url"):
+            try:
+                row["pod_file_url"] = await presign_stored_url(row["pod_file_url"], expires_in=7200) or row["pod_file_url"]
+            except Exception:
+                pass
         items.append(row)
     return APIResponse(
         success=True, data=items,
@@ -46,6 +52,12 @@ async def get_market_trip(
     data = {c.key: getattr(trip, c.key) for c in trip.__table__.columns}
     data["margin"] = trip.margin
     data["margin_pct"] = round(trip.margin_pct, 2)
+    if data.get("pod_file_url"):
+        try:
+            from app.services.s3_service import presign_stored_url
+            data["pod_file_url"] = await presign_stored_url(data["pod_file_url"], expires_in=7200) or data["pod_file_url"]
+        except Exception:
+            pass
     return APIResponse(success=True, data=data)
 
 
