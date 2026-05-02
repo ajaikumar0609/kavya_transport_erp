@@ -1,6 +1,6 @@
 # Finance Manager API Endpoints
 # Salary, advances, expenses, payouts, schedules, vendor payments
-from fastapi import APIRouter, Depends, Query, HTTPException, Body
+from fastapi import APIRouter, Depends, Query, HTTPException, Body, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from typing import Optional
@@ -168,7 +168,7 @@ async def payment_history(
         trip = trips_map_exp.get(e.trip_id)
         trip_number = trip.trip_number if trip else str(e.trip_id)
         driver_name = (trip.driver_name or "Driver") if trip else "Driver"
-        exp_type = getattr(e.expense_type, "value", str(e.expense_type or "EXPENSE"))
+        exp_type = getattr(e.category, "value", str(e.category or "EXPENSE"))
         exp_label = exp_type.replace("_", " ").title()
         items.append({
             "type": "TRIP_EXPENSE",
@@ -177,6 +177,7 @@ async def payment_history(
             "amount_rupees": float(e.amount) / 100 if e.amount else 0.0,
             "detail": trip_number,
             "date": e.paid_at.isoformat() if e.paid_at else None,
+            "payment_proof_url": e.payment_proof_url,
         })
 
     # ── 3. Trip advance payments ─────────────────────────────────────────────
@@ -917,6 +918,7 @@ async def trip_expense_queue(
             "created_at": expense.created_at.isoformat() if expense.created_at else None,
             "paid_at": expense.paid_at.isoformat() if expense.paid_at else None,
             "paid_by_name": paid_by_names.get(expense.paid_by) if expense.paid_by else None,
+            "payment_proof_url": expense.payment_proof_url,
         })
 
     pages = (total + limit - 1) // limit
@@ -927,10 +929,44 @@ async def trip_expense_queue(
     )
 
 
+@router.post("/trip-expenses/{expense_id}/upload-proof", response_model=APIResponse)
+async def upload_payment_proof(
+    expense_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Upload a payment proof photo for a trip expense. Returns the URL to use when marking as paid."""
+    _require_finance(current_user)
+    from app.services.s3_service import upload_file as s3_upload
+    result = await db.execute(select(TripExpense).where(TripExpense.id == expense_id))
+    expense = result.scalar_one_or_none()
+    if not expense:
+        raise HTTPException(status_code=404, detail="Trip expense not found.")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Max 10MB.")
+
+    content_type = file.content_type or "image/jpeg"
+    result_data = await s3_upload(
+        file_bytes=file_bytes,
+        filename=file.filename or f"proof_{expense_id}.jpg",
+        folder="payment_proofs",
+        content_type=content_type,
+    )
+    return APIResponse(success=True, data={
+        "proof_url": result_data["url"],
+        "proof_s3_key": result_data["s3_key"],
+    })
+
+
 @router.patch("/trip-expenses/{expense_id}/pay", response_model=APIResponse)
 async def pay_trip_expense(
     expense_id: int,
     notes: Optional[str] = Body(None),
+    proof_url: Optional[str] = Body(None),
+    proof_s3_key: Optional[str] = Body(None),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
@@ -953,6 +989,10 @@ async def pay_trip_expense(
     expense.is_verified = True
     expense.paid_by = current_user.user_id
     expense.paid_at = paid_at
+    if proof_url:
+        expense.payment_proof_url = proof_url
+    if proof_s3_key:
+        expense.payment_proof_s3_key = proof_s3_key
     if notes:
         expense.description = (expense.description or "") + f" [Finance: {notes}]"
     await db.commit()
@@ -990,6 +1030,7 @@ async def pay_trip_expense(
         "paid_by_name": fm_name,
         "paid_at": paid_at.isoformat(),
         "trip_number": trip_number,
+        "payment_proof_url": expense.payment_proof_url,
     })
 
 

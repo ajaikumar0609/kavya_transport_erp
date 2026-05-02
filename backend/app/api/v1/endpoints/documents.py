@@ -306,17 +306,10 @@ async def get_document(
     result = await db.execute(select(Document).where(Document.id == doc_id))
     doc = result.scalar_one_or_none()
     assert_tenant_access(doc, current_user, not_found_detail="Document not found")
-    from app.services.s3_service import presign_stored_url
-    row = {}
-    for c in doc.__table__.columns:
-        v = getattr(doc, c.key)
-        if hasattr(v, 'isoformat'):
-            v = v.isoformat()
-        elif hasattr(v, 'value'):
-            v = v.value
-        row[c.key] = v
+    row = {c.key: getattr(doc, c.key) for c in doc.__table__.columns}
     if row.get('file_url'):
         try:
+            from app.services.s3_service import presign_stored_url
             row['file_url'] = await presign_stored_url(row['file_url'], expires_in=7200)
         except Exception:
             pass

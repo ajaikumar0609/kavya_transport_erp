@@ -53,9 +53,9 @@ export default function LoginPage() {
     setOtpError('');
     setOtpLoading(true);
     try {
-      const res = await authService.sendOtp(otpPhone, otpPassword);
+      const res = await authService.sendOtp({ phone: otpPhone }, otpPassword);
       setSessionId(res.session_id);
-      setPhoneMasked(res.phone_masked);
+      setPhoneMasked(res.phone_masked ?? '');
       setOtpDelivery((res as any).delivery ?? 'SMS');
       setOtpDevCode((res as any).otp_dev ?? '');
       setOtpStep('verify');
@@ -100,15 +100,7 @@ export default function LoginPage() {
     setOtpDelivery('');
   };
 
-  const demoRoles = [
-    { label: 'Admin', email: 'admin@kavyatransports.com', password: 'Kavya@Admin2026!', color: 'bg-blue-50 text-blue-700 ring-blue-600/20' },
-    { label: 'Manager', email: 'manager@kavyatransports.com', password: 'Kavya@Manager2026!', color: 'bg-purple-50 text-purple-700 ring-purple-600/20' },
-    { label: 'Fleet Manager', email: 'fleetmanager@kavyatransports.com', password: 'Kavya@Fleet2026!', color: 'bg-green-50 text-green-700 ring-green-600/20' },
-    { label: 'Accountant', email: 'accountant@kavyatransports.com', password: 'Kavya@Accounts2026!', color: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
-    { label: 'Finance Manager', email: 'finance@kavyatransports.com', password: 'Kavya@Finance2026!', color: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
-    { label: 'Driver', email: 'driver@kavyatransports.com', password: 'Kavya@Driver2026!', color: 'bg-rose-50 text-rose-700 ring-rose-600/20' },
-    { label: 'Pump Operator', email: 'pump@kavyatransports.com', password: 'Kavya@Pump2026!', color: 'bg-orange-50 text-orange-700 ring-orange-600/20' },
-  ];
+
 
   return (
     <div className="min-h-screen flex">

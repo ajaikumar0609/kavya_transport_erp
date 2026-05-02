@@ -399,12 +399,7 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (ctx) => _UploadSheet(
-        meta: meta,
-        numberController: numberController,
-        isUpdate: true,
-        currentFileUrl: doc.fileUrl,
-      ),
+      builder: (ctx) => _UploadSheet(meta: meta, numberController: numberController, isUpdate: true),
     );
 
     if (result == null || !mounted) return;
@@ -576,14 +571,8 @@ class _UploadSheet extends StatefulWidget {
   final _DocMeta meta;
   final TextEditingController numberController;
   final bool isUpdate;
-  final String? currentFileUrl;
 
-  const _UploadSheet({
-    required this.meta,
-    required this.numberController,
-    this.isUpdate = false,
-    this.currentFileUrl,
-  });
+  const _UploadSheet({required this.meta, required this.numberController, this.isUpdate = false});
 
   @override
   State<_UploadSheet> createState() => _UploadSheetState();
@@ -665,60 +654,6 @@ class _UploadSheetState extends State<_UploadSheet> {
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: KTColors.textHeading),
           ),
           const SizedBox(height: 16),
-
-          // Current document preview (update mode only)
-          if (widget.isUpdate && widget.currentFileUrl != null && widget.currentFileUrl!.isNotEmpty) ...[
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: KTColors.lightBg,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: KTColors.borderColor.withAlpha(100)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Current Document',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: KTColors.textMuted),
-                  ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      widget.currentFileUrl!,
-                      height: 140,
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (_, child, progress) => progress == null
-                          ? child
-                          : Container(
-                              height: 140,
-                              color: KTColors.surface,
-                              child: const Center(child: CircularProgressIndicator(color: KTColors.driverAccent, strokeWidth: 2)),
-                            ),
-                      errorBuilder: (_, __, ___) => Container(
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: KTColors.surface,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.description_outlined, color: KTColors.textMuted, size: 20),
-                            SizedBox(width: 8),
-                            Text('Document uploaded', style: TextStyle(fontSize: 12, color: KTColors.textMuted)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
           // ── Scan banner ──────────────────────────────────────────────────
           Material(
             color: KTColors.driverAccentBg,

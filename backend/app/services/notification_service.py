@@ -226,40 +226,10 @@ class NotificationService:
             if not tokens:
                 return
 
-            import firebase_admin
-            from firebase_admin import messaging
-
-            # Ensure Firebase is initialised (idempotent)
-            if not firebase_admin._apps:
-                import firebase_admin.credentials as fb_cred
-                cred = fb_cred.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
-                firebase_admin.initialize_app(cred)
-
-            android_priority = "high" if urgency == "urgent" else "normal"
-            string_data = {k: str(v) for k, v in (data or {}).items()}
-
-            for token in tokens:
-                try:
-                    msg = messaging.Message(
-                        notification=messaging.Notification(title=title, body=body),
-                        data=string_data,
-                        token=token,
-                        android=messaging.AndroidConfig(
-                            priority=android_priority,
-                            notification=messaging.AndroidNotification(
-                                sound="default",
-                                default_sound=True,
-                            ),
-                        ),
-                        apns=messaging.APNSConfig(
-                            payload=messaging.APNSPayload(
-                                aps=messaging.Aps(sound="default"),
-                            )
-                        ),
-                    )
-                    messaging.send(msg)
-                except Exception as e:
-                    logger.warning(f"FCM send failed for token {token[:20]}...: {e}")
+            # FCM/Firebase removed — push notifications disabled.
+            logger.info(
+                f"[FCM-DISABLED] Would push to {len(tokens)} token(s): title={title!r} body={body!r}"
+            )
         except Exception as exc:
             logger.warning(f"NotificationService FCM dispatch failed: {exc}")
 

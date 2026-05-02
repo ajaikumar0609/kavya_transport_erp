@@ -293,7 +293,7 @@ async def attendance_check_in(
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    allowed_roles = {'driver', 'manager', 'fleet_manager', 'accountant', 'project_associate', 'pump_operator'}
+    allowed_roles = {'driver', 'manager', 'fleet_manager', 'accountant', 'project_associate', 'pump_operator', 'clerk'}
     current_roles = {r.lower() for r in (current_user.roles or [])}
     if not current_roles.intersection(allowed_roles):
         raise HTTPException(status_code=403, detail='Attendance check-in is not enabled for this role')

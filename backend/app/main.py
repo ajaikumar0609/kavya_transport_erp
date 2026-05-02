@@ -106,13 +106,15 @@ async def lifespan(app: FastAPI):
 
 
 # Create FastAPI app
+_is_production = settings.ENVIRONMENT == "production"
 app = FastAPI(
     title=settings.APP_NAME,
     description="Enterprise Transport ERP System - Managing Fleet, Trips, Finance, and Analytics",
     version=settings.APP_VERSION,
-    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
-    docs_url=f"{settings.API_V1_PREFIX}/docs",
-    redoc_url=f"{settings.API_V1_PREFIX}/redoc",
+    # Disable interactive docs in production to reduce attack surface
+    openapi_url=None if _is_production else f"{settings.API_V1_PREFIX}/openapi.json",
+    docs_url=None if _is_production else f"{settings.API_V1_PREFIX}/docs",
+    redoc_url=None if _is_production else f"{settings.API_V1_PREFIX}/redoc",
     lifespan=lifespan,
     redirect_slashes=False,  # Prevent redirect stripping Authorization header
 )
@@ -123,19 +125,36 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
 
 
 # Request timing middleware
 @app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    """Add processing time to response headers."""
+async def add_security_headers(request: Request, call_next):
+    """Add security headers and processing time to all responses."""
     start_time = time.time()
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
+    # Security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # Minimal CSP for API responses: backend serves JSON, never embeds in iframes.
+    # frame-ancestors duplicates X-Frame-Options for modern browsers.
+    # The frontend (Vite/React) sets its own CSP for HTML responses.
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    if _is_production:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Never expose server info
+    if "Server" in response.headers:
+        del response.headers["Server"]
+    if "X-Powered-By" in response.headers:
+        del response.headers["X-Powered-By"]
     return response
 
 
@@ -156,6 +175,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Include API router
 app.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
+# Health check endpoints (no auth, no prefix — accessible at /health/*)
+from app.api.health import router as health_router
+app.include_router(health_router)
+
 
 # ── Public tracking endpoint (no auth required) ────────────
 from fastapi import HTTPException as _HTTPException
@@ -170,12 +193,30 @@ async def public_tracking(token: str):
     return {"success": True, "data": info}
 
 
-# Mount local uploads directory for serving uploaded files
+# Serve local uploads with JWT authentication — never expose as public static files
 from pathlib import Path as _Path
-from fastapi.staticfiles import StaticFiles as _StaticFiles
+from fastapi.responses import FileResponse as _FileResponse
+from fastapi import Depends as _Depends
+from app.core.security import get_current_user as _get_current_user
+
 _uploads_dir = _Path(__file__).resolve().parents[1] / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", _StaticFiles(directory=str(_uploads_dir)), name="uploads")
+
+
+@app.get("/uploads/{file_path:path}", include_in_schema=False)
+async def serve_upload(
+    file_path: str,
+    _current_user=_Depends(_get_current_user),
+):
+    """Serve an uploaded file. Requires a valid JWT access token."""
+    from fastapi import HTTPException as _HTTPException
+    safe = (_uploads_dir / file_path).resolve()
+    # Path-traversal guard
+    if not str(safe).startswith(str(_uploads_dir)):
+        raise _HTTPException(status_code=404)
+    if not safe.exists() or not safe.is_file():
+        raise _HTTPException(status_code=404)
+    return _FileResponse(safe)
 
 
 # ── WebSocket endpoint ─────────────────────────────────────

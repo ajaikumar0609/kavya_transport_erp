@@ -129,6 +129,7 @@ export interface TripExpenseItem {
   created_at: string | null;
   paid_at: string | null;
   paid_by_name: string | null;
+  payment_proof_url?: string | null;
 }
 
 export interface PendingAdvanceTripItem {
@@ -164,6 +165,7 @@ export interface PaymentHistoryItem {
   amount_rupees: number;
   detail: string;
   date: string | null;
+  payment_proof_url?: string | null;
 }
 
 // ─── API calls ─────────────────────────────────────────────────────────────────
@@ -201,10 +203,15 @@ export const financeManagerService = {
     api.get(`${BASE}/trip-expense-queue`, {
       params: { status, trip_id, category, page },
     }).then((r: any) => (r.data as TripExpenseItem[]) ?? []),
-  payTripExpense: (id: number, notes?: string) =>
-    api.patch(`${BASE}/trip-expenses/${id}/pay`, notes ?? null, {
+  payTripExpense: (id: number, notes?: string, proofUrl?: string | null, proofS3Key?: string | null) =>
+    api.patch(`${BASE}/trip-expenses/${id}/pay`, { notes: notes ?? null, proof_url: proofUrl ?? null, proof_s3_key: proofS3Key ?? null }, {
       headers: { 'Content-Type': 'application/json' },
     }),
+  uploadPaymentProof: (id: number, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`${BASE}/trip-expenses/${id}/upload-proof`, formData);
+  },
   rejectTripExpense: (id: number, reason: string) =>
     api.patch(`${BASE}/trip-expenses/${id}/reject`, reason, { headers: { 'Content-Type': 'application/json' } }),
 

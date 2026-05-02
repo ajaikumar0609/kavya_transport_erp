@@ -102,8 +102,8 @@ class RateLimiter:
 # Auth-sensitive limiters use fail_closed=True so a Redis outage cannot enable
 # unlimited OTP sends / login brute force.
 otp_send_limiter = RateLimiter(
-    prefix="otp_send", max_requests=3, window_seconds=900, fail_closed=False
-)   # 3 per 15 min per key — fail-open so Redis outage doesn't block login
+    prefix="otp_send", max_requests=3, window_seconds=600, fail_closed=False
+)   # 3 per 10 min per key (phone/identifier) — fail-open so Redis outage doesn't block login
 otp_send_ip_limiter = RateLimiter(
     prefix="otp_send_ip", max_requests=10, window_seconds=900, fail_closed=False
 )   # 10 per 15 min per IP — fail-open

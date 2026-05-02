@@ -52,7 +52,7 @@ class LRCreate(BaseModel):
     driver_id: Optional[int] = None
     eway_bill_number: Optional[str] = None
     eway_bill_date: Optional[date] = None
-    eway_bill_valid_until: Optional[date] = None
+    eway_bill_valid_until: Optional[datetime] = None
     payment_mode: str = "to_be_billed"
     freight_amount: float = 0
     loading_charges: float = 0

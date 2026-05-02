@@ -57,6 +57,21 @@ import UnifiedTrackingPage from '@/pages/tracking/UnifiedTrackingPage';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import AuditorReportPage from '@/pages/reports/AuditorReportPage';
 
+// Auditor Pages
+import AuditorDashboardPage from '@/pages/auditor/AuditorDashboardPage';
+import AuditorTripsPage from '@/pages/auditor/AuditorTripsPage';
+import AuditorExpensesPage from '@/pages/auditor/AuditorExpensesPage';
+import AuditorLRProfitabilityPage from '@/pages/auditor/AuditorLRProfitabilityPage';
+import AuditorFuelPage from '@/pages/auditor/AuditorFuelPage';
+import AuditorClientsPage from '@/pages/auditor/AuditorClientsPage';
+import AuditorMaintenancePage from '@/pages/auditor/AuditorMaintenancePage';
+
+// Clerk Pages
+import ClerkDashboardPage from '@/pages/clerk/ClerkDashboardPage';
+import ClerkLRsPage from '@/pages/clerk/ClerkLRsPage';
+import ClerkPODPage from '@/pages/clerk/ClerkPODPage';
+import ClerkAttendancePage from '@/pages/clerk/ClerkAttendancePage';
+
 // Compliance & Tools
 import VehicleCompliancePage from '@/pages/fleet/VehicleCompliancePage';
 import DriverCompliancePage from '@/pages/fleet/DriverCompliancePage';
@@ -65,6 +80,7 @@ import FuelPricePage from '@/pages/fleet/FuelPricePage';
 import RouteCalculatorPage from '@/pages/trips/RouteCalculatorPage';
 import PaymentLinkPage from '@/pages/finance/PaymentLinkPage';
 import PaymentsHubPage from '@/pages/finance/PaymentsHubPage';
+import AuditorReviewPage from '@/pages/finance/AuditorReviewPage';
 import NotificationCenterPage from '@/pages/settings/NotificationCenterPage';
 // Settings
 import SettingsPage from '@/pages/settings/SettingsPage';
@@ -80,7 +96,6 @@ import FleetMaintenancePage from '@/pages/fleet/FleetMaintenancePage';
 import FleetFuelPage from '@/pages/fleet/FleetFuelPage';
 import FleetAlertsPage from '@/pages/fleet/FleetAlertsPage';
 import FleetReportsPage from '@/pages/fleet/FleetReportsPage';
-import TyrePage from '@/pages/fleet/TyrePage';
 import TyreTrackerPage from '@/pages/fleet/TyreTrackerPage';
 import FleetPumpManagementPage from '@/pages/fleet/FleetPumpManagementPage';
 import GeofenceManagementPage from '@/pages/fleet/GeofenceManagementPage';
@@ -233,6 +248,22 @@ function App() {
           {/* Reports */}
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/reports/auditor" element={<AuditorReportPage />} />
+          <Route path="/auditor/payment-proofs" element={<AuthGuard requiredPermission="payment:proof:read"><AuditorReviewPage /></AuthGuard>} />
+
+          {/* Auditor Role Pages */}
+          <Route path="/auditor/dashboard" element={<AuditorDashboardPage />} />
+          <Route path="/auditor/trips" element={<AuditorTripsPage />} />
+          <Route path="/auditor/expenses" element={<AuditorExpensesPage />} />
+          <Route path="/auditor/lr-profitability" element={<AuditorLRProfitabilityPage />} />
+          <Route path="/auditor/fuel" element={<AuditorFuelPage />} />
+          <Route path="/auditor/clients" element={<AuditorClientsPage />} />
+          <Route path="/auditor/maintenance" element={<AuditorMaintenancePage />} />
+
+          {/* Clerk Role Pages */}
+          <Route path="/clerk/dashboard" element={<ClerkDashboardPage />} />
+          <Route path="/clerk/lrs" element={<ClerkLRsPage />} />
+          <Route path="/clerk/pod" element={<ClerkPODPage />} />
+          <Route path="/clerk/attendance" element={<ClerkAttendancePage />} />
 
           {/* Settings */}
           <Route path="/settings" element={<SettingsPage />} />
@@ -259,7 +290,6 @@ function App() {
           <Route path="/fleet/maintenance" element={<FleetMaintenancePage />} />
           <Route path="/fleet/fuel" element={<FleetFuelPage />} />
           <Route path="/fleet/tyres" element={<TyreTrackerPage />} />
-          <Route path="/fleet/tyres-old" element={<TyrePage />} />
           <Route path="/fleet/alerts" element={<FleetAlertsPage />} />
           <Route path="/fleet/reports" element={<FleetReportsPage />} />
           <Route path="/fleet/geofences" element={<GeofenceManagementPage />} />

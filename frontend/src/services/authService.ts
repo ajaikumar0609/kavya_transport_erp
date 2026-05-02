@@ -43,13 +43,26 @@ export const authService = {
   },
 
   logout: async (): Promise<void> => {
-    try { await api.post('/auth/logout'); } catch { /* ignore */ }
+    const refreshToken = localStorage.getItem('refresh_token');
+    try {
+      await api.post('/auth/logout', refreshToken ? { refresh_token: refreshToken } : {});
+    } catch { /* ignore */ }
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('portal_token');
+    sessionStorage.removeItem('portal_role');
+    sessionStorage.removeItem('portal_name');
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
   },
 
-  sendOtp: async (phone: string, password: string): Promise<{ session_id: string; phone_masked: string }> => {
-    const data = await api.post<{ session_id: string; phone_masked: string }>('/auth/send-otp', { phone, password });
+  sendOtp: async (
+    credential: { phone?: string; identifier?: string; channel?: string },
+    password: string,
+  ): Promise<{ session_id: string; phone_masked?: string; email_masked?: string; delivery?: string }> => {
+    const data = await api.post<{ session_id: string; phone_masked?: string; email_masked?: string; delivery?: string }>(
+      '/auth/send-otp',
+      { ...credential, password, channel: credential.channel ?? 'sms' },
+    );
     return unwrap(data);
   },
 

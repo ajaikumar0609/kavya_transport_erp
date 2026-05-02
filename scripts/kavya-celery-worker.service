@@ -1,0 +1,32 @@
+[Unit]
+Description=Kavya Transports Celery Worker
+After=network.target redis.service postgresql.service
+Wants=redis.service
+
+[Service]
+User=kavya
+Group=kavya
+WorkingDirectory=/var/www/kavya/backend
+EnvironmentFile=/var/www/kavya/backend/.env
+ExecStart=/var/www/kavya/venv/bin/celery -A app.celery_app worker \
+    --loglevel=info \
+    --concurrency=2 \
+    --queues=default,payments,finance,notifications,reports \
+    --hostname=worker@%%h \
+    --logfile=/var/log/kavya/celery-worker.log \
+    --pidfile=/var/run/kavya/celery-worker.pid
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+KillMode=mixed
+KillSignal=SIGQUIT
+TimeoutStopSec=60
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

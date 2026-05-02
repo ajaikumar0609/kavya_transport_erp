@@ -730,6 +730,7 @@ class _HistoryItem extends StatelessWidget {
     final detail = (item['detail'] as String?) ?? '';
     final amtRupees = (item['amount_rupees'] as num?)?.toDouble() ?? 0.0;
     final dateStr = (item['date'] as String?) ?? '';
+    final proofUrl = item['payment_proof_url'] as String?;
 
     final color = _color(type);
     final icon = _icon(type);
@@ -871,7 +872,52 @@ class _HistoryItem extends StatelessWidget {
                 decoration: TextDecoration.none,
               ),
             ),
+          // Proof photo icon
+          if (proofUrl != null && proofUrl.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _showProof(context, proofUrl),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEDE9FE),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.receipt_long, color: Color(0xFF7C3AED), size: 16),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  void _showProof(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              url,
+              fit: BoxFit.contain,
+              loadingBuilder: (ctx, child, progress) {
+                if (progress == null) return child;
+                return const SizedBox(
+                  height: 200,
+                  child: Center(child: CircularProgressIndicator()),
+                );
+              },
+              errorBuilder: (_, __, ___) => const SizedBox(
+                height: 200,
+                child: Center(child: Icon(Icons.broken_image, size: 48, color: Colors.white)),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

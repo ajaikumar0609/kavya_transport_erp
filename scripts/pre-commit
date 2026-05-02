@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Pre-commit hook — blocks commits containing hardcoded credentials.
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+RED='\033[0;31m'
+NC='\033[0m'
+
+# Patterns that indicate hardcoded secrets
+FORBIDDEN_PATTERNS=(
+    "AWS_SECRET_ACCESS_KEY\s*=\s*['\"][A-Za-z0-9+/]{20}"
+    "AWS_ACCESS_KEY_ID\s*=\s*['\"]AKIA"
+    "507963A4xXGr4c69da9418P1"
+    "36646b72316d313131353435"
+    "rzp_live_[a-zA-Z0-9]+"
+    "sk-[a-zA-Z0-9]{20,}"
+    "xoxb-[0-9]+-[0-9]+"
+    "SECRET_KEY\s*=\s*['\"].{1,30}['\"]"
+)
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E "\.(py|ts|tsx|dart|env|json|yaml|yml|sh)$" || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+FOUND=0
+for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+    while IFS= read -r file; do
+        if git show ":$file" 2>/dev/null | grep -qE "$pattern"; then
+            echo -e "${RED}✗ BLOCKED: Potential secret found matching pattern '${pattern}' in: $file${NC}"
+            FOUND=1
+        fi
+    done <<< "$STAGED_FILES"
+done
+
+# Block .env files from being committed (except .env.example / .env.template)
+while IFS= read -r file; do
+    if echo "$file" | grep -qE "\.env$|\.env\.(local|production|staging|test)$"; then
+        echo -e "${RED}✗ BLOCKED: Do not commit .env files: $file${NC}"
+        FOUND=1
+    fi
+done <<< "$STAGED_FILES"
+
+if [ "$FOUND" -eq 1 ]; then
+    echo ""
+    echo "Commit rejected — remove secrets before committing."
+    echo "If this is a false positive, use: git commit --no-verify"
+    exit 1
+fi
+
+exit 0

@@ -21,7 +21,7 @@ export interface NavMenuGroup {
   roles?: RoleType[];
 }
 
-export type HeaderNavRole = 'ADMIN' | 'MANAGER' | 'FLEET_MANAGER' | 'ACCOUNTANT' | 'FINANCE_MANAGER' | 'PROJECT_ASSOCIATES' | 'DRIVER' | 'PUMP_OPERATOR';
+export type HeaderNavRole = 'ADMIN' | 'MANAGER' | 'FLEET_MANAGER' | 'ACCOUNTANT' | 'FINANCE_MANAGER' | 'PROJECT_ASSOCIATES' | 'DRIVER' | 'PUMP_OPERATOR' | 'AUDITOR' | 'TYRE_INSPECTOR' | 'CLERK';
 
 export interface HeaderNavItem {
   label: string;
@@ -72,15 +72,14 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
           { label: 'Fleet Dashboard', route: '/fleet', icon: 'gauge', description: 'Fleet overview and KPIs' },
           { label: 'Fleet Vehicles', route: '/fleet/vehicles', icon: 'truck', description: 'Vehicle health and maintenance' },
           { label: 'Fleet Drivers', route: '/fleet/drivers', icon: 'user', description: 'Driver performance and compliance' },
-          { label: 'Fleet Tracking', route: '/fleet/tracking', icon: 'pin', description: 'Fleet GPS tracking map' },
           { label: 'Maintenance', route: '/fleet/maintenance', icon: 'wrench', description: 'Service records and schedules' },
           { label: 'Fuel Mgmt', route: '/fleet/fuel', icon: 'fuel', description: 'Fuel entries and efficiency tracking' },
           { label: 'Tyres', route: '/fleet/tyres', icon: 'circle', description: 'Real-time tyre monitoring, stock & retreading' },
           { label: 'Fleet Alerts', route: '/fleet/alerts', icon: 'bell', description: 'Compliance and service alerts' },
-          { label: 'TPMS', route: '/fleet/tpms', icon: 'activity', description: 'Tyre pressure monitoring system' },
           { label: 'Fleet Reports', route: '/fleet/reports', icon: 'chart', description: 'Fleet analytics and reports' },
           { label: 'Assign Drivers', route: '/fleet/assign-drivers', icon: 'user', description: 'Assign a default driver to each vehicle' },
           { label: 'Pump Management', route: '/fleet/pump-management', icon: 'fuel', description: 'Bunks, tanks, pumps and pump employee activity' },
+          { label: 'Driver Approvals', route: '/fleet/approvals', icon: 'check', description: 'Review and action driver leave and advance requests', badge: 'approvals' },
         ],
       },
       {
@@ -93,6 +92,7 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
         label: 'Quick Actions',
         items: [
           { label: 'Create LR', route: '/lr/new', icon: 'fileplus', description: 'Create a new lorry receipt' },
+          { label: 'Upload Doc', route: '/documents/upload', icon: 'upload', description: 'Upload operational documents' },
         ],
       },
       {
@@ -136,12 +136,10 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
           { label: 'Fleet Dashboard', route: '/fleet', icon: 'gauge', description: 'Fleet overview and KPIs' },
           { label: 'Fleet Vehicles', route: '/fleet/vehicles', icon: 'truck', description: 'Vehicle health and maintenance' },
           { label: 'Fleet Drivers', route: '/fleet/drivers', icon: 'user', description: 'Driver performance and compliance' },
-          { label: 'Fleet Tracking', route: '/fleet/tracking', icon: 'pin', description: 'Fleet GPS tracking map' },
           { label: 'Maintenance', route: '/fleet/maintenance', icon: 'wrench', description: 'Service records and schedules' },
           { label: 'Fuel Mgmt', route: '/fleet/fuel', icon: 'fuel', description: 'Fuel entries and efficiency tracking' },
           { label: 'Tyres', route: '/fleet/tyres', icon: 'circle', description: 'Real-time tyre monitoring, stock & retreading' },
           { label: 'Fleet Alerts', route: '/fleet/alerts', icon: 'bell', description: 'Compliance and service alerts' },
-          { label: 'TPMS', route: '/fleet/tpms', icon: 'activity', description: 'Tyre pressure monitoring system' },
           { label: 'Fleet Reports', route: '/fleet/reports', icon: 'chart', description: 'Fleet analytics and reports' },
         ],
       },
@@ -149,6 +147,7 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
         label: 'Quick Actions',
         items: [
           { label: 'Create LR', route: '/lr/new', icon: 'fileplus', description: 'Create a new lorry receipt' },
+          { label: 'Upload Doc', route: '/documents/upload', icon: 'upload', description: 'Upload operational documents' },
         ],
       },
       {
@@ -177,16 +176,14 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
           { label: 'Fleet Dashboard', route: '/fleet', icon: 'gauge', description: 'Fleet overview and KPIs' },
           { label: 'Fleet Vehicles', route: '/fleet/vehicles', icon: 'truck', description: 'Vehicle health and maintenance' },
           { label: 'Fleet Drivers', route: '/fleet/drivers', icon: 'user', description: 'Driver performance and compliance' },
-          { label: 'Fleet Tracking', route: '/fleet/tracking', icon: 'pin', description: 'Fleet GPS tracking map' },
           { label: 'Maintenance', route: '/fleet/maintenance', icon: 'wrench', description: 'Service records and schedules' },
           { label: 'Fuel Mgmt', route: '/fleet/fuel', icon: 'fuel', description: 'Fuel entries and efficiency tracking' },
           { label: 'Tyres', route: '/fleet/tyres', icon: 'circle', description: 'Real-time tyre monitoring, stock & retreading' },
           { label: 'Fleet Alerts', route: '/fleet/alerts', icon: 'bell', description: 'Compliance and service alerts' },
-          { label: 'TPMS', route: '/fleet/tpms', icon: 'activity', description: 'Tyre pressure monitoring system' },
           { label: 'Fleet Reports', route: '/fleet/reports', icon: 'chart', description: 'Fleet analytics and reports' },
           { label: 'Assign Drivers', route: '/fleet/assign-drivers', icon: 'user', description: 'Assign a default driver to each vehicle' },
           { label: 'Pump Management', route: '/fleet/pump-management', icon: 'fuel', description: 'Bunks, tanks, pumps and pump employee activity' },
-          { label: 'Driver Approvals', route: '/fleet/approvals', icon: 'check', description: 'Review and action driver leave and advance requests' },
+          { label: 'Driver Approvals', route: '/fleet/approvals', icon: 'check', description: 'Review and action driver leave and advance requests', badge: 'approvals' },
         ],
       },
       {
@@ -330,6 +327,18 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
       },
     ],
   },
+
+  TYRE_INSPECTOR: {
+    sections: [
+      {
+        label: 'Tyre Management',
+        items: [
+          { label: 'Tyres', route: '/fleet/tyres', icon: 'circle', description: 'Tyre lifecycle, stock & retreading' },
+        ],
+      },
+    ],
+  },
+
   PUMP_OPERATOR: {
     sections: [
       { label: 'Overview', items: [{ label: 'Fuel Dashboard', route: '/pump/dashboard', icon: 'gauge', description: 'Fuel stock levels and daily activity' }] },
@@ -347,6 +356,58 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
           { label: 'Theft Alerts', route: '/pump/alerts', icon: 'alert', description: 'Anomaly detection alerts' },
           { label: 'Reports', route: '/pump/reports', icon: 'chart', description: 'Fuel consumption reports' },
           { label: 'Fuel Audit', route: '/pump/fuel-verification', icon: 'shield', description: 'Cross-verify pump vs driver records' },
+        ],
+      },
+    ],
+  },
+  AUDITOR: {
+    sections: [
+      { label: 'Overview', items: [{ label: 'Dashboard', route: '/auditor/dashboard', icon: 'shield', description: 'Audit risk overview and exception summary' }] },
+      {
+        label: 'Operations',
+        items: [
+          { label: 'Trip Audit', route: '/auditor/trips', icon: 'truck', description: 'Review delayed, deviated, and empty runs' },
+          { label: 'LR Profitability', route: '/auditor/lr-profitability', icon: 'trending-up', description: 'Per-LR revenue and profit margins' },
+          { label: 'Fuel Efficiency', route: '/auditor/fuel', icon: 'fuel', description: 'Fuel consumption vs benchmark' },
+        ],
+      },
+      {
+        label: 'Finance',
+        items: [
+          { label: 'Expense Audit', route: '/auditor/expenses', icon: 'receipt', description: 'Anomaly-flagged and no-receipt expenses' },
+          { label: 'Client Risk', route: '/auditor/clients', icon: 'users', description: 'Client risk scores and overdue aging' },
+        ],
+      },
+      {
+        label: 'Fleet',
+        items: [
+          { label: 'Maintenance Audit', route: '/auditor/maintenance', icon: 'wrench', description: 'Document expiry and pending services' },
+        ],
+      },
+    ],
+  },
+
+  CLERK: {
+    sections: [
+      {
+        label: 'Overview',
+        items: [
+          { label: 'Dashboard', route: '/clerk/dashboard', icon: 'home', description: 'Attendance and LR summary' },
+        ],
+      },
+      {
+        label: 'My Work',
+        items: [
+          { label: 'Attendance', route: '/clerk/attendance', icon: 'clock', description: 'Attendance history and check-in' },
+        ],
+      },
+      {
+        label: 'LR',
+        items: [
+          { label: 'All Lorry Receipts', route: '/lr', icon: 'file-text', description: 'View all lorry receipts' },
+          { label: 'My LRs', route: '/clerk/lrs', icon: 'user', description: 'LRs created by you' },
+          { label: 'Upload POD', route: '/clerk/pod', icon: 'upload', description: 'Upload proof of delivery documents' },
+          { label: 'Create LR', route: '/lr/new', icon: 'plus', description: 'Create a new lorry receipt' },
         ],
       },
     ],
@@ -410,12 +471,11 @@ export const enterpriseNavConfig: NavMenuGroup[] = [
       { label: 'Fleet Dashboard', path: '/fleet', roles: ['admin', 'fleet_manager'] },
       { label: 'Fleet Vehicles', path: '/fleet/vehicles', roles: ['admin', 'fleet_manager'] },
       { label: 'Fleet Drivers', path: '/fleet/drivers', roles: ['admin', 'fleet_manager'] },
-      { label: 'Live Tracking', path: '/fleet/tracking', roles: ['admin', 'fleet_manager'] },
+      { label: 'Live Tracking', path: '/tracking', roles: ['admin', 'fleet_manager'] },
       { label: 'Maintenance', path: '/fleet/maintenance', roles: ['admin', 'fleet_manager'] },
       { label: 'Fuel Mgmt', path: '/fleet/fuel', roles: ['admin', 'fleet_manager'] },
       { label: 'Tyres', path: '/fleet/tyres', roles: ['admin', 'fleet_manager'] },
       { label: 'Fleet Alerts', path: '/fleet/alerts', roles: ['admin', 'fleet_manager'] },
-      { label: 'TPMS', path: '/fleet/tpms', roles: ['admin', 'fleet_manager'] },
       { label: 'Fleet Reports', path: '/fleet/reports', roles: ['admin', 'fleet_manager'] },
       { label: 'Assign Drivers', path: '/fleet/assign-drivers', roles: ['admin', 'fleet_manager'] },
     ],
@@ -455,12 +515,29 @@ export const enterpriseNavConfig: NavMenuGroup[] = [
   },
   {
     label: 'My Work',
-    roles: ['driver', 'manager', 'fleet_manager', 'accountant', 'project_associate'],
+    roles: ['driver', 'manager', 'fleet_manager', 'accountant', 'project_associate', 'clerk'],
     items: [
       { label: 'My Trips', path: '/driver/trips', roles: ['driver'] },
-      { label: 'Attendance', path: '/my-work/attendance', roles: ['driver', 'manager', 'fleet_manager', 'accountant', 'project_associate'] },
+      { label: 'Attendance', path: '/my-work/attendance', roles: ['driver', 'manager', 'fleet_manager', 'accountant', 'project_associate', 'clerk'] },
       { label: 'Expenses', path: '/driver/expenses', roles: ['driver'] },
       { label: 'My Documents', path: '/driver/documents', roles: ['driver'] },
+    ],
+  },
+  {
+    label: 'Audit',
+    roles: ['auditor'],
+    items: [
+      { label: 'Payment Proofs', path: '/auditor/payment-proofs', roles: ['auditor'] },
+    ],
+  },
+  {
+    label: 'LR',
+    roles: ['clerk'],
+    items: [
+      { label: 'All Lorry Receipts', path: '/lr', roles: ['clerk'] },
+      { label: 'My LRs', path: '/clerk/lrs', roles: ['clerk'] },
+      { label: 'Upload POD', path: '/clerk/pod', roles: ['clerk'] },
+      { label: 'Create LR', path: '/lr/new', roles: ['clerk'] },
     ],
   },
 ];

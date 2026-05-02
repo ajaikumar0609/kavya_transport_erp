@@ -1,0 +1,33 @@
+{
+  "_comment": "AWS IAM Policy for Kavya Transports app user — least-privilege S3 access",
+  "_instructions": "Create IAM user 'kavya-app', attach this policy. Store keys in .env — never hardcode.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KavyaS3AppAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::YOUR_BUCKET_NAME/documents/*",
+        "arn:aws:s3:::YOUR_BUCKET_NAME/invoices/*",
+        "arn:aws:s3:::YOUR_BUCKET_NAME/trip-photos/*",
+        "arn:aws:s3:::YOUR_BUCKET_NAME/driver-docs/*"
+      ]
+    },
+    {
+      "Sid": "KavyaS3ListBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::YOUR_BUCKET_NAME",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": ["documents/*", "invoices/*", "trip-photos/*", "driver-docs/*"]
+        }
+      }
+    }
+  ]
+}

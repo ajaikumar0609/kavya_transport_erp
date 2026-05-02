@@ -13,6 +13,7 @@ from app.schemas.base import APIResponse, PaginationMeta
 from app.schemas.vehicle import VehicleCreate, VehicleUpdate
 from app.services import vehicle_service
 from app.models.postgres.driver import Driver
+from app.utils.tenant_guard import assert_tenant_access
 
 router = APIRouter()
 
@@ -73,10 +74,14 @@ async def expiring_vehicles(
 
 
 @router.get("/{vehicle_id}", response_model=APIResponse)
-async def get_vehicle(vehicle_id: int, db: AsyncSession = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+async def get_vehicle(
+    vehicle_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _perm=Depends(require_permission(Permissions.VEHICLE_READ)),
+):
     vehicle = await vehicle_service.get_vehicle(db, vehicle_id)
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+    assert_tenant_access(vehicle, current_user, not_found_detail="Vehicle not found")
     d = {c.key: getattr(vehicle, c.key) for c in vehicle.__table__.columns}
     d["expiry_alerts"] = vehicle_service.get_expiry_alerts(vehicle)
     return APIResponse(success=True, data=d)
@@ -104,6 +109,8 @@ async def update_vehicle(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.VEHICLE_UPDATE)),
 ):
+    existing = await vehicle_service.get_vehicle(db, vehicle_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Vehicle not found")
     try:
         vehicle = await vehicle_service.update_vehicle(db, vehicle_id, data.model_dump(exclude_unset=True))
     except IntegrityError as exc:
@@ -122,6 +129,8 @@ async def delete_vehicle(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.VEHICLE_DELETE)),
 ):
+    existing = await vehicle_service.get_vehicle(db, vehicle_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Vehicle not found")
     success = await vehicle_service.delete_vehicle(db, vehicle_id)
     if not success:
         raise HTTPException(status_code=404, detail="Vehicle not found")
@@ -191,18 +200,15 @@ async def upload_vehicle_document(
     from app.services import s3_service
 
     vehicle = await vehicle_service.get_vehicle(db, vehicle_id)
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
+    assert_tenant_access(vehicle, current_user, not_found_detail="Vehicle not found")
 
-    if file.content_type not in _ALLOWED_DOC_MIME:
-        raise HTTPException(status_code=400, detail="Unsupported file type. Upload JPEG, PNG, WEBP, or PDF.")
-
-    content = await file.read()
-    if len(content) > _MAX_DOC_SIZE:
-        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10 MB.")
+    from app.utils.upload_validator import validate_upload, ALLOWED_IMAGE_DOC_MIMES
+    content, detected_mime, safe_name = await validate_upload(
+        file, allowed_mimes=ALLOWED_IMAGE_DOC_MIMES, max_bytes=_MAX_DOC_SIZE,
+    )
 
     folder = f"documents/vehicle/{vehicle_id}"
-    upload_result = await s3_service.upload_file(content, file.filename, folder, file.content_type)
+    upload_result = await s3_service.upload_file(content, safe_name, folder, detected_mime)
 
     doc_type = document_type.strip().lower()
 

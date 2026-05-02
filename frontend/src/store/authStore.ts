@@ -120,9 +120,13 @@ export const useAuthStore = create<AuthState>()(
               const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api/v1';
               const refreshRes = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
               const newToken = refreshRes.data?.data?.access_token ?? refreshRes.data?.access_token;
+              const newRefresh = refreshRes.data?.data?.refresh_token ?? refreshRes.data?.refresh_token;
               if (newToken) {
                 localStorage.setItem('access_token', newToken);
                 set({ token: newToken });
+              }
+              if (newRefresh) {
+                localStorage.setItem('refresh_token', newRefresh);
               }
             } catch { /* ignore — will still try getMe with existing token */ }
           }
@@ -150,19 +154,16 @@ export const useAuthStore = create<AuthState>()(
       hasPermission: (permission: string) => {
         const { user } = get();
         if (!user) return false;
-        const roles = user.roles ?? [];
-        const perms = user.permissions ?? [];
-        if (roles.includes('admin') || perms.includes('*')) return true;
-        return perms.includes(permission);
+        // roles is string array like ["admin"]
+        if ((user.roles ?? []).map(r => r.toLowerCase()).includes('admin') || (user.permissions ?? []).includes('*')) return true;
+        return (user.permissions ?? []).includes(permission);
       },
 
       hasAnyPermission: (permissions: string[]) => {
         const { user } = get();
         if (!user) return false;
-        const roles = user.roles ?? [];
-        const perms = user.permissions ?? [];
-        if (roles.includes('admin') || perms.includes('*')) return true;
-        return permissions.some(p => perms.includes(p));
+        if ((user.roles ?? []).map(r => r.toLowerCase()).includes('admin') || (user.permissions ?? []).includes('*')) return true;
+        return permissions.some(p => (user.permissions ?? []).includes(p));
       },
 
       hasRole: (role: RoleType) => {
@@ -174,8 +175,7 @@ export const useAuthStore = create<AuthState>()(
       hasAnyRole: (roles: RoleType[]) => {
         const { user } = get();
         if (!user) return false;
-        const userRoles = user.roles ?? [];
-        return roles.some(role => userRoles.includes(role));
+        return roles.some(role => (user.roles ?? []).includes(role));
       },
     }),
     {

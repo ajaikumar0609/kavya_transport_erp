@@ -412,11 +412,15 @@ export default function CreateLRPage() {
   const { data: vehiclesData } = useQuery({
     queryKey: ['lr-lookup-vehicles'],
     queryFn: () => lrService.getVehicles(),
+    throwOnError: false,
+    meta: { suppressErrorToast: true },
   });
 
   const { data: driversData } = useQuery({
     queryKey: ['lr-lookup-drivers'],
     queryFn: () => lrService.getDrivers(),
+    throwOnError: false,
+    meta: { suppressErrorToast: true },
   });
 
   const { data: usersData } = useQuery({
@@ -434,6 +438,8 @@ export default function CreateLRPage() {
   const { data: clientsData } = useQuery({
     queryKey: ['lr-lookup-clients'],
     queryFn: () => clientService.list({ page: 1, limit: 200 } as any),
+    throwOnError: false,
+    meta: { suppressErrorToast: true },
   });
 
   // Load existing LR for edit

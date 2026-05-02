@@ -42,6 +42,9 @@ export default function TripExpensesPage() {
   const [rejectReason, setRejectReason] = useState('');
   const [payConfirmId, setPayConfirmId] = useState<number | null>(null);
   const [payNotes, setPayNotes] = useState('');
+  const [payProofUrl, setPayProofUrl] = useState<string | null>(null);
+  const [payProofS3Key, setPayProofS3Key] = useState<string | null>(null);
+  const [payProofUploading, setPayProofUploading] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<TripExpenseItem | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
@@ -68,12 +71,14 @@ export default function TripExpensesPage() {
   const totalPending = allItems.reduce((s, e) => s + (e.expense_status === 'PENDING' ? e.amount : 0), 0);
 
   const payMutation = useMutation({
-    mutationFn: (id: number) => financeManagerService.payTripExpense(id, payNotes || undefined),
+    mutationFn: (id: number) => financeManagerService.payTripExpense(id, payNotes || undefined, payProofUrl ?? undefined, payProofS3Key ?? undefined),
     onSuccess: () => {
       toast.success('Expense marked as paid');
       qc.invalidateQueries({ queryKey: ['trip-expense-queue'] });
       setPayConfirmId(null);
       setPayNotes('');
+      setPayProofUrl(null);
+      setPayProofS3Key(null);
     },
     onError: (err: any) => toast.error(err?.response?.data?.detail || 'Payment failed'),
   });
@@ -285,7 +290,7 @@ export default function TripExpensesPage() {
       {payConfirmId !== null && pendingItem && (
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50"
-          onClick={() => { setPayConfirmId(null); setPayNotes(''); }}
+          onClick={() => { setPayConfirmId(null); setPayNotes(''); setPayProofUrl(null); setPayProofS3Key(null); }}
         >
           <div
             className="bg-white rounded-xl shadow-xl p-5 w-full max-w-sm"
@@ -313,6 +318,56 @@ export default function TripExpensesPage() {
                 <span className="font-bold text-green-700 text-base">{fmt(pendingItem.amount)}</span>
               </div>
             </div>
+
+            {/* Payment proof upload */}
+            <div className="mb-3">
+              <p className="text-xs font-medium text-gray-600 mb-1.5">Payment Proof (optional)</p>
+              {payProofUrl ? (
+                <div className="relative w-full h-28 rounded-lg overflow-hidden border border-green-200">
+                  <img src={payProofUrl} alt="Payment proof" className="w-full h-full object-cover" />
+                  <button
+                    onClick={() => { setPayProofUrl(null); setPayProofS3Key(null); }}
+                    className="absolute top-1.5 right-1.5 bg-black/50 text-white rounded-full p-0.5 hover:bg-black/70"
+                  >
+                    <XCircle size={14} />
+                  </button>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center w-full h-20 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${payProofUploading ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-green-400 hover:bg-green-50'}`}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={payProofUploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file || !payConfirmId) return;
+                      setPayProofUploading(true);
+                      try {
+                        const res = await financeManagerService.uploadPaymentProof(payConfirmId, file);
+                        const d = (res as any)?.data;
+                        setPayProofUrl(d?.proof_url ?? null);
+                        setPayProofS3Key(d?.proof_s3_key ?? null);
+                      } catch {
+                        toast.error('Photo upload failed');
+                      } finally {
+                        setPayProofUploading(false);
+                      }
+                    }}
+                  />
+                  {payProofUploading ? (
+                    <span className="text-xs text-gray-500">Uploading…</span>
+                  ) : (
+                    <>
+                      <span className="text-lg">📸</span>
+                      <span className="text-xs text-gray-500 mt-0.5">Tap to add photo or receipt</span>
+                    </>
+                  )}
+                </label>
+              )}
+            </div>
+
             <textarea
               value={payNotes}
               onChange={(e) => setPayNotes(e.target.value)}
@@ -321,14 +376,14 @@ export default function TripExpensesPage() {
             />
             <div className="flex gap-2">
               <button
-                onClick={() => { setPayConfirmId(null); setPayNotes(''); }}
+                onClick={() => { setPayConfirmId(null); setPayNotes(''); setPayProofUrl(null); setPayProofS3Key(null); }}
                 className="flex-1 border border-gray-200 rounded-lg py-2 text-sm font-medium hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={() => payMutation.mutate(payConfirmId!)}
-                disabled={payMutation.isPending}
+                disabled={payMutation.isPending || payProofUploading}
                 className="flex-1 bg-green-500 text-white rounded-lg py-2 text-sm font-semibold hover:bg-green-600 disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 <IndianRupee size={14} />

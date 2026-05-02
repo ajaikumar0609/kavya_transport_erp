@@ -174,7 +174,7 @@ function DocumentCard({
           {status !== 'missing' && fileUrl && (
             <button
               type="button"
-              onClick={() => openDocumentUrl(resolveFileUrl(fileUrl))}
+              onClick={() => void openDocumentUrl(resolveFileUrl(fileUrl))}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors text-blue-600"
             >
               <Eye size={12} />
@@ -289,12 +289,6 @@ export function DocumentChecklist({ entityType, entityId, onExtracted, onAllRequ
     const doc = docMap[normalizeDocType(type)];
     if (!doc) return { status: 'missing' };
     const status = getDocStatus(doc.expiry_date);
-    // If file_url is empty (S3 file missing) but DB record exists, show the
-    // expiry-based status so metadata is visible — just omit fileUrl so
-    // the View button is hidden and the button label becomes 'Re-upload'.
-    if (!doc.file_url) {
-      return { status, expiryDate: doc.expiry_date, documentNumber: doc.document_number, fileUrl: undefined };
-    }
     return { status, expiryDate: doc.expiry_date, documentNumber: doc.document_number, fileUrl: doc.file_url };
   };
 

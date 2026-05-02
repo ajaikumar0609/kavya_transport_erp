@@ -3,7 +3,7 @@
 // ============================================================
 
 // ---- Enums ----
-export type RoleType = 'admin' | 'manager' | 'fleet_manager' | 'accountant' | 'finance_manager' | 'project_associate' | 'driver' | 'pump_operator';
+export type RoleType = 'admin' | 'manager' | 'fleet_manager' | 'accountant' | 'finance_manager' | 'project_associate' | 'driver' | 'pump_operator' | 'auditor' | 'tyre_inspector' | 'clerk';
 
 export type VehicleType = 'truck' | 'trailer' | 'tanker' | 'container' | 'mini_truck' | 'lcv' | 'pickup' | 'other';
 export type VehicleStatus = 'available' | 'on_trip' | 'maintenance' | 'breakdown' | 'inactive';

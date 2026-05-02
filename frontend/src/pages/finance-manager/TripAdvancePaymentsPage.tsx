@@ -411,6 +411,7 @@ export default function TripAdvancePaymentsPage() {
                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Route</th>
                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Amount</th>
                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid On</th>
+                        <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Proof</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
@@ -432,6 +433,16 @@ export default function TripAdvancePaymentsPage() {
                               ₹{item.amount_rupees.toLocaleString('en-IN')}
                             </td>
                             <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{fmtDate(item.date)}</td>
+                            <td className="px-4 py-3">
+                              {item.payment_proof_url ? (
+                                <a href={item.payment_proof_url} target="_blank" rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-purple-50 text-purple-700 rounded-md text-xs font-medium hover:bg-purple-100 transition-colors">
+                                  <span>📸</span> View
+                                </a>
+                              ) : (
+                                <span className="text-gray-300 text-xs">—</span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}

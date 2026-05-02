@@ -201,7 +201,6 @@ export function DocumentUploadWithExtraction({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const docLabel = label ?? DOC_TYPE_LABELS[documentType] ?? documentType;
-  const isSystemGenerated = SYSTEM_GENERATED_TYPES.has(documentType);
 
   // ── File handlers ─────────────────────────────────────────────────────────
 
@@ -480,7 +479,7 @@ export function DocumentUploadWithExtraction({
           ) : docLabel}
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          {isSystemGenerated
+          {SYSTEM_GENERATED_TYPES.has(documentType)
             ? 'Click or drag to upload (PDF / image)'
             : 'Click or drag to upload — AI will extract the details'}
         </p>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1071144223879",
+    "project_id": "kavya-transports",
+    "storage_bucket": "kavya-transports.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1071144223879:android:aeb733bdba86ad60f92422",
+        "android_client_info": {
+          "package_name": "com.kavyatransports.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCpMe_4_kzSWTDP1Z2IsfAInErJ5onses4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

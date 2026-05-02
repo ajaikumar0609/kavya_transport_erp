@@ -63,6 +63,9 @@ class Permissions:
     PAYMENT_READ = "payment:read"
     PAYMENT_UPDATE = "payment:update"
     PAYMENT_DELETE = "payment:delete"
+    PAYMENT_PROOF_UPLOAD = "payment_proof:upload"
+    PAYMENT_PROOF_READ = "payment_proof:read"
+    PAYMENT_PROOF_REVIEW = "payment_proof:review"
     
     # Finance - Ledger
     LEDGER_READ = "ledger:read"
@@ -148,11 +151,6 @@ class Permissions:
     AUDIT_LOG_READ = "audit:read"
     AUDIT_LOG_EXPORT = "audit:export"
     SYSTEM_CONFIG_READ = "config:read"
-
-    # Payment Proof
-    PAYMENT_PROOF_UPLOAD = "payment_proof:upload"
-    PAYMENT_PROOF_READ = "payment_proof:read"
-    PAYMENT_PROOF_REVIEW = "payment_proof:review"
     SYSTEM_CONFIG_UPDATE = "config:update"
     INTELLIGENCE_VIEW = "intelligence:view"
     EVENT_BUS_READ = "event:read"
@@ -170,14 +168,6 @@ class Permissions:
 
     # Sync
     SYNC_CREATE = "sync:create"
-
-    # IFIAS — Invoice Automation (accountant workflow)
-    IFIAS_UPLOAD = "ifias:upload"           # Upload billing Excel
-    IFIAS_VIEW = "ifias:view"               # View batch list & LR details
-    IFIAS_REVIEW = "ifias:review"           # Review / edit extracted values
-    IFIAS_CONFIRM = "ifias:confirm"         # Confirm LR rows
-    IFIAS_EXPORT = "ifias:export"           # Export confirmed Excel
-    IFIAS_REPROCESS = "ifias:reprocess"     # Trigger reprocessing of a LR
 
 # Role-Permission Mapping
 ROLE_PERMISSIONS = {
@@ -321,14 +311,8 @@ ROLE_PERMISSIONS = {
         Permissions.DOCUMENT_READ,
         # Alerts / Notifications
         Permissions.ALERT_VIEW,
-        # IFIAS — Invoice Automation (full accountant access)
-        Permissions.IFIAS_UPLOAD, Permissions.IFIAS_VIEW,
-        Permissions.IFIAS_REVIEW, Permissions.IFIAS_CONFIRM,
-        Permissions.IFIAS_EXPORT, Permissions.IFIAS_REPROCESS,
-        # Payment Proof
-        Permissions.PAYMENT_PROOF_UPLOAD, Permissions.PAYMENT_PROOF_READ,
     ],
-
+    
     "project_associate": [
         # LR
         Permissions.LR_CREATE, Permissions.LR_READ, Permissions.LR_UPDATE,
@@ -440,6 +424,42 @@ ROLE_PERMISSIONS = {
         Permissions.DRIVER_READ,
         # Alerts / Notifications
         Permissions.ALERT_VIEW,
+    ],
+
+    "auditor": [
+        # Core read access for all auditable data
+        Permissions.REPORT_VIEW,
+        Permissions.TRIP_READ,
+        Permissions.EXPENSE_READ,
+        Permissions.CLIENT_READ,
+        Permissions.VEHICLE_READ,
+        Permissions.DRIVER_READ,
+        Permissions.LR_READ,
+        Permissions.INVOICE_READ,
+        Permissions.PAYMENT_READ,
+        Permissions.PAYMENT_PROOF_READ,
+        Permissions.PAYMENT_PROOF_REVIEW,
+        Permissions.FUEL_READ,
+        Permissions.MAINTENANCE_READ,
+        Permissions.DOCUMENT_READ,
+        Permissions.AUDIT_LOG_READ,
+        Permissions.AUDIT_LOG_EXPORT,
+        Permissions.ALERT_VIEW,
+    ],
+
+    "clerk": [
+        # Clerks can create and read LRs, and mark their own attendance
+        Permissions.LR_CREATE,
+        Permissions.LR_READ,
+        Permissions.LR_UPDATE,
+        # Needed to populate dropdowns on the Create LR form
+        Permissions.CLIENT_READ,
+        Permissions.VEHICLE_READ,
+        Permissions.DRIVER_READ,
+        Permissions.TRIP_READ,
+        Permissions.ALERT_VIEW,
+        Permissions.ATTENDANCE_CREATE,
+        Permissions.ATTENDANCE_READ,
     ],
 }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { lrService } from '@/services/dataService';
@@ -17,10 +17,13 @@ import { handleApiError } from '../../utils/handleApiError';
 export default function LRListPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [searchParams] = useSearchParams();
   const { hasPermission, hasRole } = useAuthStore();
   const isAdmin = hasRole('admin');
+  const isClerk = hasRole('clerk');
   const [filters, setFilters] = useState<FilterParams>({ page: 1, page_size: 20 });
   const [transportTab, setTransportTab] = useState<'' | 'fleet' | 'market'>('');
+  const [myLrs, setMyLrs] = useState<boolean>(searchParams.get('my_lrs') === 'true');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<LR | null>(null);
   const [editItem, setEditItem] = useState<LR | null>(null);
@@ -50,8 +53,8 @@ export default function LRListPage() {
   });
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['lr', filters, transportTab],
-    queryFn: () => lrService.list({ ...filters, transport_type: transportTab || undefined } as any),
+    queryKey: ['lr', filters, transportTab, myLrs],
+    queryFn: () => lrService.list({ ...filters, transport_type: transportTab || undefined, my_lrs: myLrs || undefined } as any),
   });
 
   const { data: jobsData } = useQuery({
@@ -284,26 +287,41 @@ export default function LRListPage() {
         </div>
       </div>
 
-      {/* Fleet / Market tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {([
-          { key: '' as const, label: 'All LRs', icon: null },
-          { key: 'fleet' as const, label: 'Fleet Trips', icon: Truck },
-          { key: 'market' as const, label: 'Market Trips', icon: ShoppingCart },
-        ] as { key: '' | 'fleet' | 'market'; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => { setTransportTab(key); setFilters({ ...filters, page: 1 }); }}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              transportTab === key
-                ? 'border-primary-600 text-primary-700'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {Icon && <Icon size={14} />}
-            {label}
-          </button>
-        ))}
+      {/* Fleet / Market tabs + My LRs toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-1">
+        <div className="flex gap-1">
+          {([
+            { key: '' as const, label: 'All LRs', icon: null },
+            { key: 'fleet' as const, label: 'Fleet Trips', icon: Truck },
+            { key: 'market' as const, label: 'Market Trips', icon: ShoppingCart },
+          ] as { key: '' | 'fleet' | 'market'; label: string; icon: any }[]).map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => { setTransportTab(key); setFilters({ ...filters, page: 1 }); }}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                transportTab === key
+                  ? 'border-primary-600 text-primary-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {Icon && <Icon size={14} />}
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* My LRs toggle — visible to clerk and any user who wants to filter their own */}
+        <button
+          onClick={() => { setMyLrs((v) => !v); setFilters({ ...filters, page: 1 }); }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+            myLrs
+              ? 'bg-primary-50 border-primary-400 text-primary-700'
+              : 'bg-white border-gray-200 text-gray-500 hover:text-gray-700'
+          }`}
+          title="Show only LRs created by you"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a9 9 0 0 1 18 0v2"/></svg>
+          My LRs
+        </button>
       </div>
 
       <DataTable

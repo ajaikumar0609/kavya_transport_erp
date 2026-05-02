@@ -40,12 +40,7 @@ def poll_ialert_gps(self):
     try:
         from app.services.ialert_gps_service import poll_and_ingest
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            result = loop.run_until_complete(poll_and_ingest())
-        finally:
-            loop.close()
+        result = asyncio.run(poll_and_ingest())
 
         return {"status": "ok", **result}
 

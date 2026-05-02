@@ -33,7 +33,7 @@ def _coerce_enum(enum_cls, raw_value):
 
 
 # ==================== INVOICES ====================
-async def list_invoices(db: AsyncSession, page: int = 1, limit: int = 20, search: str = None, status: str = None, client_id: int = None, trip_id: int = None):
+async def list_invoices(db: AsyncSession, page: int = 1, limit: int = 20, search: str = None, status: str = None, client_id: int = None, trip_id: int = None, has_payment_proof: bool = None):
     query = select(Invoice).where(Invoice.is_deleted == False)
     count_query = select(func.count(Invoice.id)).where(Invoice.is_deleted == False)
 
@@ -51,6 +51,9 @@ async def list_invoices(db: AsyncSession, page: int = 1, limit: int = 20, search
     if trip_id:
         query = query.where(Invoice.trip_id == trip_id)
         count_query = count_query.where(Invoice.trip_id == trip_id)
+    if has_payment_proof is True:
+        query = query.where(Invoice.payment_proof_url.isnot(None))
+        count_query = count_query.where(Invoice.payment_proof_url.isnot(None))
 
     total = (await db.execute(count_query)).scalar() or 0
     offset = (page - 1) * limit

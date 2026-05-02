@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:dio/dio.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import '../../core/theme/kt_colors.dart';
 import '../../providers/fleet_dashboard_provider.dart';
 import '../../providers/pump_dashboard_provider.dart';
@@ -809,6 +812,88 @@ class _TripExpenseGroupState extends ConsumerState<_TripExpenseGroup> {
     }
   }
 
+  /// Capture a payment proof photo. Returns null if user skips.
+  Future<String?> _captureProofAndUpload(int expId) async {
+    final picker = ImagePicker();
+
+    // Show camera/gallery/skip bottom sheet
+    final source = await showModalBottomSheet<ImageSource?>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 16),
+            const Text('Add Payment Proof', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 4),
+            const Text('Take a photo of the payment receipt or proof', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Color(0xFFEDE9FE), child: Icon(Icons.camera_alt, color: Color(0xFF7C3AED))),
+              title: const Text('Take Photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Color(0xFFE0F2FE), child: Icon(Icons.photo_library, color: Colors.blue)),
+              title: const Text('Choose from Gallery'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const CircleAvatar(backgroundColor: Colors.grey, child: Icon(Icons.skip_next, color: Colors.white)),
+              title: const Text('Skip (no photo)'),
+              onTap: () => Navigator.pop(context, null),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    // null means sheet dismissed without picking (treat as skip)
+    if (!mounted) return null;
+    // If user tapped Skip (explicitly null from tap)
+    if (source == null) return null;
+
+    final XFile? photo = await picker.pickImage(
+      source: source,
+      imageQuality: 75,
+      maxWidth: 1200,
+    );
+    if (photo == null || !mounted) return null;
+
+    // Upload
+    try {
+      final api = ref.read(apiServiceProvider);
+      final bytes = await File(photo.path).readAsBytes();
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: 'proof_$expId.jpg', contentType: DioMediaType('image', 'jpeg')),
+      });
+      final uploadRes = await api.postMultipart(
+        '/finance-manager/trip-expenses/$expId/upload-proof',
+        formData,
+      );
+      if (uploadRes is Map && uploadRes['success'] == true) {
+        return uploadRes['data']?['proof_url'] as String?;
+      }
+    } catch (e) {
+      // Upload failed — continue without proof
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Photo upload failed, marking paid without proof.'), backgroundColor: Colors.orange),
+        );
+      }
+    }
+    return null;
+  }
+
   Future<void> _payExpense(int expId, String amtStr) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -834,11 +919,17 @@ class _TripExpenseGroupState extends ConsumerState<_TripExpenseGroup> {
       ),
     );
     if (confirm != true || !mounted) return;
+
+    // Capture proof photo
+    final proofUrl = await _captureProofAndUpload(expId);
+    if (!mounted) return;
+
     setState(() => _paying.add(expId));
     try {
       final api = ref.read(apiServiceProvider);
       final res = await api.patch(
-          '/finance-manager/trip-expenses/$expId/pay', data: {});
+          '/finance-manager/trip-expenses/$expId/pay',
+          data: proofUrl != null ? {'proof_url': proofUrl} : {});
       if (!mounted) return;
       if ((res is Map) && res['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -894,6 +985,15 @@ class _TripExpenseGroupState extends ConsumerState<_TripExpenseGroup> {
     );
     if (confirm != true || !mounted) return;
 
+    // Capture one proof photo for all expenses in this trip group
+    // Use the first expense ID for the upload endpoint
+    final firstId = expenses.isNotEmpty ? (expenses.first['id'] as int?) : null;
+    String? sharedProofUrl;
+    if (firstId != null) {
+      sharedProofUrl = await _captureProofAndUpload(firstId);
+    }
+    if (!mounted) return;
+
     final api = ref.read(apiServiceProvider);
     bool anyFailed = false;
     for (final e in expenses) {
@@ -901,9 +1001,11 @@ class _TripExpenseGroupState extends ConsumerState<_TripExpenseGroup> {
       if (id == null) continue;
       if (mounted) setState(() => _paying.add(id));
       try {
-        final res = await api.patch(
-            '/finance-manager/trip-expenses/$id/pay', data: {});
-        if (!((res is Map) && res['success'] == true)) anyFailed = true;
+        await api.patch('/finance-manager/trip-expenses/$id/pay',
+            data: sharedProofUrl != null ? {'proof_url': sharedProofUrl} : {});
+      } on DioException catch (e) {
+        // 400 means already paid — treat as success, skip
+        if (e.response?.statusCode != 400) anyFailed = true;
       } catch (_) {
         anyFailed = true;
       }

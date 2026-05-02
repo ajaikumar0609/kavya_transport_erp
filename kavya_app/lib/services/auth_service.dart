@@ -14,6 +14,39 @@ class AuthService {
 
   AuthService(this._ref);
 
+  /// Step-1: request OTP. Returns a map containing:
+  ///   { 'otp_required': true, 'session_id': '...', 'phone_masked': '...' }
+  /// For admin/direct login returns:
+  ///   { 'otp_required': false }
+  Future<Map<String, dynamic>> loginStep1(String identifier, String password) async {
+    // Detect phone vs email/employee-ID
+    final isPhone = RegExp(r'^\d{10}$').hasMatch(identifier.trim());
+    if (isPhone) {
+      // Phone-based: call send-otp (triggers 2Factor SMS)
+      final resp = await _apiService.sendOtp(identifier.trim(), password);
+      final data = resp['data'] as Map<String, dynamic>? ?? {};
+      return {
+        'otp_required': true,
+        'session_id': data['session_id'],
+        'phone_masked': data['phone_masked'],
+        'delivery': data['delivery'],
+      };
+    } else {
+      // Email / employee-ID: direct login (admin/staff without phone OTP)
+      final response = await _apiService.login(identifier, password);
+      final data = response['data'] as Map<String, dynamic>? ?? response;
+      await _saveTokensAndNavigate(data);
+      return {'otp_required': false};
+    }
+  }
+
+  /// Step-2: verify the 6-digit OTP entered by the user.
+  Future<void> confirmOtp(String sessionId, String otp) async {
+    final response = await _apiService.verifyOtp(sessionId, otp);
+    final data = response['data'] as Map<String, dynamic>? ?? response;
+    await _saveTokensAndNavigate(data);
+  }
+
   Future<void> login(String email, String password) async {
     final response = await _apiService.login(email, password);
     final data = response['data'] as Map<String, dynamic>? ?? response;

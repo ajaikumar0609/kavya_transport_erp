@@ -523,11 +523,13 @@ async def get_unified_vehicles(
         elif minutes_ago > 120:
             veh_status = "offline"
         else:
-            # Read from MongoDB trip_tracking or derive from vehicle
-            trip = trip_by_vehicle.get(v.id)
-            if trip and trip.status in (TripStatusEnum.IN_TRANSIT, TripStatusEnum.STARTED):
+            # Use real-time speed + ignition from GPS provider (KTT/iALERT)
+            # Industry-standard thresholds: >2 km/h = moving, engine on = idle, else stopped
+            spd = v.last_speed if v.last_speed is not None else 0.0
+            ign = v.last_ignition_on if v.last_ignition_on is not None else False
+            if spd > 2:
                 veh_status = "moving"
-            elif trip and trip.status in (TripStatusEnum.LOADING, TripStatusEnum.UNLOADING):
+            elif ign:
                 veh_status = "idle"
             else:
                 veh_status = "stopped"
@@ -549,11 +551,11 @@ async def get_unified_vehicles(
             "provider_live": prov_is_active and has_gps and minutes_ago < 10,
             "lat": float(v.current_latitude) if v.current_latitude else None,
             "lng": float(v.current_longitude) if v.current_longitude else None,
-            "speed": 0,  # Will come from MongoDB/WebSocket
+            "speed": float(v.last_speed or 0),
             "heading": 0,
             "odometer": float(v.odometer_reading or 0),
-            "ignition_on": veh_status in ("moving", "idle"),
-            "engine_on": veh_status in ("moving", "idle"),
+            "ignition_on": bool(v.last_ignition_on),
+            "engine_on": bool(v.last_ignition_on),
             "fuel_level": None,
             "battery_voltage": None,
             "status": veh_status,

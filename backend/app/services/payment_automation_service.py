@@ -28,8 +28,16 @@ async def process_razorpay_webhook(db: AsyncSession, event: str, payload: dict) 
 
 
 def verify_razorpay_webhook_signature(body: bytes, signature: str) -> bool:
-    """Razorpay webhook signature verification removed. Always returns False."""
-    return False
+    """Verify Razorpay webhook signature using HMAC-SHA256."""
+    import hmac
+    import hashlib
+    from app.core.config import settings
+
+    secret = getattr(settings, "RAZORPAY_WEBHOOK_SECRET", None) or getattr(settings, "RAZORPAY_KEY_SECRET", None)
+    if not secret:
+        return False
+    expected = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 async def list_payment_links(

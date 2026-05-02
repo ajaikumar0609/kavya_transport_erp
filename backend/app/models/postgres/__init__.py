@@ -29,7 +29,6 @@ from .driver_requests import DriverLeave, DriverAdvanceRequest, DriverSalaryAdva
 from .expense import Expense, ExpenseCategory as CompanyExpenseCategory, PaymentMethod as CompanyPaymentMethod, ApprovalStatus
 from .payment import PaymentContact, Payout, PaymentSchedule, ExpenseSubmission
 from .reconciliation import ReconciliationSession, ReconciliationLine
-from .ifias import ProcessingBatch, IfiasLineItem
 
 __all__ = [
     "Base",

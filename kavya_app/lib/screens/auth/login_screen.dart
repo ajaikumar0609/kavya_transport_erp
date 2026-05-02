@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/kt_colors.dart';
@@ -22,6 +24,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+
+  // ── OTP step state ─────────────────────────────────────────────
+  final List<TextEditingController> _otpCtrl =
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _otpFocus = List.generate(6, (_) => FocusNode());
+  Timer? _expiryTimer;
+  Timer? _resendTimer;
+  int _otpExpirySeconds = 300;   // 5 min
+  int _resendCooldownSeconds = 0; // 30 s after send
+  String _storedIdentifier = '';
+  String _storedPassword = '';
+  int _resendCount = 0;           // track how many resends (max 3 per 10 min)
 
   static const _bg1 = Color(0xFF050D1F);
   static const _bg2 = Color(0xFF0A1535);
@@ -75,6 +89,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   void dispose() {
+    _expiryTimer?.cancel();
+    _resendTimer?.cancel();
+    for (final c in _otpCtrl) c.dispose();
+    for (final f in _otpFocus) f.dispose();
     _entranceCtrl.dispose();
     _truckCtrl.dispose();
     _roadCtrl.dispose();
@@ -85,13 +103,41 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     super.dispose();
   }
 
+  // ── OTP HELPERS ────────────────────────────────────────────────
+  void _startOtpTimers() {
+    _expiryTimer?.cancel();
+    _resendTimer?.cancel();
+    setState(() {
+      _otpExpirySeconds = 300;   // 5 min
+      _resendCooldownSeconds = 30;
+    });
+    // Expiry countdown
+    _expiryTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_otpExpirySeconds > 0) _otpExpirySeconds--;
+      });
+    });
+    // Resend cooldown
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {
+        if (_resendCooldownSeconds > 0) _resendCooldownSeconds--;
+      });
+    });
+  }
+
+  String _otpValue() => _otpCtrl.map((c) => c.text).join();
+
   // ── AUTH LOGIC ─────────────────────────────────────────────────
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
-      await ref.read(authProvider.notifier).login(
-            _emailController.text.trim(),
-            _passwordController.text,
-          );
+      final identifier = _emailController.text.trim();
+      final password = _passwordController.text;
+      _storedIdentifier = identifier;
+      _storedPassword = password;
+      _resendCount = 0;
+      await ref.read(authProvider.notifier).login(identifier, password);
       if (mounted) {
         final st = ref.read(authProvider);
         if (st.error != null) {
@@ -103,7 +149,81 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             margin: const EdgeInsets.all(16),
             duration: const Duration(seconds: 3),
           ));
+        } else if (st.otpRequired) {
+          _startOtpTimers();
         }
+      }
+    }
+  }
+
+  void _handleOtpSubmit() async {
+    final otp = _otpValue();
+    if (otp.length != 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Enter all 6 digits'),
+        backgroundColor: Color(0xFFEF4444),
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.all(16),
+        duration: Duration(seconds: 2),
+      ));
+      return;
+    }
+    await ref.read(authProvider.notifier).confirmOtp(otp);
+    if (mounted) {
+      final st = ref.read(authProvider);
+      if (st.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(st.error!),
+          backgroundColor: KTColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 3),
+        ));
+        // Clear OTP boxes on failure
+        for (final c in _otpCtrl) c.clear();
+        _otpFocus[0].requestFocus();
+      }
+    }
+  }
+
+  void _handleResend() async {
+    if (_resendCooldownSeconds > 0) return;
+    if (_resendCount >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Maximum 3 OTPs per 10 minutes. Please wait before requesting again.'),
+        backgroundColor: Color(0xFFF59E0B),
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.all(16),
+        duration: Duration(seconds: 4),
+      ));
+      return;
+    }
+    for (final c in _otpCtrl) c.clear();
+    await ref.read(authProvider.notifier).resendOtp(
+      _storedIdentifier, _storedPassword,
+    );
+    if (mounted) {
+      final st = ref.read(authProvider);
+      if (st.error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(st.error!),
+          backgroundColor: KTColors.danger,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+          duration: const Duration(seconds: 4),
+        ));
+      } else {
+        _resendCount++;
+        _startOtpTimers();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('New OTP sent to your registered number'),
+          backgroundColor: Color(0xFF1D9E75),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.all(16),
+          duration: Duration(seconds: 2),
+        ));
       }
     }
   }
@@ -402,7 +522,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                   ),
                 ),
               ),
-              // Content
+              // Content — OTP card or login form
+              if (authState.otpRequired)
+                _buildOtpContent(authState)
+              else
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 30, 24, 28),
                 child: Form(
@@ -450,19 +573,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                       const SizedBox(height: 24),
 
-                      // Email
+                      // Identifier (email / employee ID / phone)
                       _GlossyInput(
                         controller: _emailController,
-                        hint: 'Email',
-                        keyboardType: TextInputType.emailAddress,
-                        leadingIcon: Icons.email_outlined,
-                        autofillHints: const [AutofillHints.email],
+                        hint: 'Email, Employee ID or Phone',
+                        keyboardType: TextInputType.text,
+                        leadingIcon: Icons.person_outline_rounded,
+                        autofillHints: const [AutofillHints.username],
                         validator: (v) {
                           if (v == null || v.trim().isEmpty) {
-                            return 'Enter your email';
-                          }
-                          if (!v.contains('@')) {
-                            return 'Enter a valid email';
+                            return 'Enter your email, employee ID or phone';
                           }
                           return null;
                         },
@@ -590,6 +710,363 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── OTP CARD CONTENT ────────────────────────────────────────────
+  Widget _buildOtpContent(AuthState authState) {
+    final expiryMin = _otpExpirySeconds ~/ 60;
+    final expirySec = _otpExpirySeconds % 60;
+    final expiryLabel =
+        '${expiryMin.toString().padLeft(2, '0')}:${expirySec.toString().padLeft(2, '0')}';
+    final isExpired = _otpExpirySeconds <= 0;
+    final isVerifying = authState.isLoading;
+    final canResend = _resendCooldownSeconds == 0 && !isVerifying;
+    final rateLimitReached = _resendCount >= 3;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 30, 24, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title row
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () {
+                  _expiryTimer?.cancel();
+                  _resendTimer?.cancel();
+                  ref.read(authProvider.notifier).resetOtp();
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12)),
+                  ),
+                  child: Icon(Icons.arrow_back_rounded,
+                      color: Colors.white.withValues(alpha: 0.7), size: 16),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                width: 4,
+                height: 22,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [_orange, Color(0xFF2563EB)],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Verify OTP',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Padding(
+            padding: const EdgeInsets.only(left: 14),
+            child: Text(
+              authState.phoneMasked != null
+                  ? 'OTP sent to ${authState.phoneMasked}'
+                  : 'OTP sent to your registered number',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.45),
+                fontSize: 11.5,
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+
+          // Expiry countdown
+          Center(
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: isExpired
+                    ? const Color(0xFFEF4444).withValues(alpha: 0.12)
+                    : _orange.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isExpired
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.35)
+                      : _orange.withValues(alpha: 0.28),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isExpired
+                        ? Icons.timer_off_rounded
+                        : Icons.timer_rounded,
+                    color: isExpired
+                        ? const Color(0xFFEF4444)
+                        : _orange,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    isExpired
+                        ? 'OTP expired — request a new one'
+                        : 'Expires in $expiryLabel',
+                    style: TextStyle(
+                      color: isExpired
+                          ? const Color(0xFFEF4444)
+                          : _orange,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+
+          // 6 OTP digit boxes
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(6, (i) {
+              return SizedBox(
+                width: 42,
+                height: 52,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _otpCtrl[i].text.isNotEmpty
+                          ? _orange.withValues(alpha: 0.7)
+                          : Colors.white.withValues(alpha: 0.18),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: TextFormField(
+                    controller: _otpCtrl[i],
+                    focusNode: _otpFocus[i],
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    maxLength: 1,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    decoration: const InputDecoration(
+                      counterText: '',
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    onChanged: (v) {
+                      setState(() {});
+                      if (v.isNotEmpty && i < 5) {
+                        _otpFocus[i + 1].requestFocus();
+                      }
+                      if (v.isEmpty && i > 0) {
+                        _otpFocus[i - 1].requestFocus();
+                      }
+                      if (_otpValue().length == 6) {
+                        _handleOtpSubmit();
+                      }
+                    },
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 18),
+
+          // Info / rate-limit warning
+          if (rateLimitReached)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: const Color(0xFFF59E0B).withValues(alpha: 0.30)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      color: Color(0xFFF59E0B), size: 14),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Max 3 OTPs per 10 minutes reached. Please wait before requesting again.',
+                      style: TextStyle(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.90),
+                        fontSize: 10.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Row(
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    color: Colors.white.withValues(alpha: 0.25), size: 12),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Max 5 attempts \u2022 Max 3 OTPs per 10 minutes \u2022 Valid for 5 min',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.28),
+                      fontSize: 10,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 20),
+
+          // Verify button
+          Container(
+            width: double.infinity,
+            height: 52,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: isExpired || isVerifying
+                  ? LinearGradient(
+                      colors: [
+                        Colors.white.withValues(alpha: 0.12),
+                        Colors.white.withValues(alpha: 0.08),
+                      ],
+                    )
+                  : const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFFFFFFF), Color(0xFFDDE5EE)],
+                    ),
+              boxShadow: isExpired || isVerifying
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        blurRadius: 20,
+                        spreadRadius: -6,
+                        offset: const Offset(0, -2),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: isExpired || isVerifying ? null : _handleOtpSubmit,
+                child: Center(
+                  child: isVerifying
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            color: isExpired
+                                ? Colors.white.withValues(alpha: 0.4)
+                                : _navy,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              isExpired
+                                  ? Icons.timer_off_rounded
+                                  : Icons.verified_rounded,
+                              color: isExpired
+                                  ? Colors.white.withValues(alpha: 0.35)
+                                  : _navy,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              isExpired ? 'OTP Expired' : 'Verify & Login',
+                              style: TextStyle(
+                                color: isExpired
+                                    ? Colors.white.withValues(alpha: 0.35)
+                                    : _navy,
+                                fontSize: 15.5,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Resend row
+          Center(
+            child: canResend && !rateLimitReached
+                ? GestureDetector(
+                    onTap: _handleResend,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: _orange.withValues(alpha: 0.10),
+                        border: Border.all(
+                            color: _orange.withValues(alpha: 0.28)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.refresh_rounded,
+                              color: _orange, size: 14),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Resend OTP',
+                            style: TextStyle(
+                              color: _orange,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Text(
+                    rateLimitReached
+                        ? 'Resend limit reached (3/3)'
+                        : 'Resend available in ${_resendCooldownSeconds}s',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.30),
+                      fontSize: 11.5,
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }

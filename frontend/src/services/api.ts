@@ -27,7 +27,7 @@ const api = axios.create({
 // Request interceptor - attach token
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = useAuthStore.getState().token ?? localStorage.getItem('access_token');
+    const token = useAuthStore.getState().token ?? sessionStorage.getItem('access_token') ?? localStorage.getItem('access_token');
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -87,6 +87,10 @@ const getApiErrorMessage = (error: AxiosError): string => {
 
 const clearAuthAndRedirectToLogin = () => {
   useAuthStore.getState().clearAuth();
+  sessionStorage.removeItem('access_token');
+  sessionStorage.removeItem('portal_token');
+  sessionStorage.removeItem('portal_role');
+  sessionStorage.removeItem('portal_name');
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
   if (window.location.pathname !== '/login') {
@@ -132,7 +136,7 @@ api.interceptors.response.use(
         });
         // Backend returns { success, data: { access_token, ... }, message }
         const newToken = data.data?.access_token || data.access_token;
-        localStorage.setItem('access_token', newToken);
+        sessionStorage.setItem('access_token', newToken);
         const newRefresh = data.data?.refresh_token || data.refresh_token;
         if (newRefresh) {
           localStorage.setItem('refresh_token', newRefresh);

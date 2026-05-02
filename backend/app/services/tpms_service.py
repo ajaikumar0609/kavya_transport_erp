@@ -262,7 +262,11 @@ async def get_reading_history(
 # ── Predictive Maintenance ────────────────────────────
 
 async def predict_next_service(db: AsyncSession, vehicle_id: int):
-    """Predict next service based on odometer + history."""
+    """Predict next service based on odometer + history.
+
+    When odometer is unavailable (0), falls back to the soonest next_service_date
+    across all maintenance records — date-only, no km calculations.
+    """
     v_result = await db.execute(
         select(Vehicle).where(Vehicle.id == vehicle_id)
     )
@@ -270,7 +274,7 @@ async def predict_next_service(db: AsyncSession, vehicle_id: int):
     if not vehicle:
         return None
 
-    # Get last 5 maintenance records to find average interval
+    # Get last 5 completed maintenance records ordered by service_date
     m_result = await db.execute(
         select(VehicleMaintenance)
         .where(VehicleMaintenance.vehicle_id == vehicle_id, VehicleMaintenance.status == "completed")
@@ -280,10 +284,45 @@ async def predict_next_service(db: AsyncSession, vehicle_id: int):
     records = m_result.scalars().all()
 
     current_odo = float(vehicle.odometer_reading or 0)
+    has_odometer = current_odo > 0
+    today = datetime.utcnow().date()
     predictions = []
 
-    if len(records) >= 2:
-        # Calculate average km/days between services
+    if not has_odometer:
+        # ── No odometer data: use the soonest next_service_date from all records ──
+        all_due_result = await db.execute(
+            select(VehicleMaintenance)
+            .where(
+                VehicleMaintenance.vehicle_id == vehicle_id,
+                VehicleMaintenance.next_service_date.isnot(None),
+            )
+            .order_by(VehicleMaintenance.next_service_date.asc())
+            .limit(1)
+        )
+        soonest = all_due_result.scalar_one_or_none()
+        last = records[0] if records else None
+        predicted_date = soonest.next_service_date if soonest else None
+        days_until = (predicted_date - today).days if predicted_date else None
+        urgency = "normal"
+        if days_until is not None:
+            if days_until <= 0:
+                urgency = "critical"
+            elif days_until <= 30:
+                urgency = "soon"
+        predictions.append({
+            "type": "general_service",
+            "last_service_date": last.service_date.isoformat() if last and last.service_date else None,
+            "last_service_km": None,
+            "avg_interval_km": None,
+            "avg_interval_days": None,
+            "km_since_last": None,
+            "predicted_date": predicted_date.isoformat() if predicted_date else None,
+            "km_remaining": None,
+            "urgency": urgency,
+            "note": "Odometer not available — date-based prediction only",
+        })
+    elif len(records) >= 2:
+        # ── Has odometer: calculate from history ──
         intervals_km = []
         intervals_days = []
         for i in range(len(records) - 1):
@@ -302,21 +341,23 @@ async def predict_next_service(db: AsyncSession, vehicle_id: int):
         last = records[0]
         last_odo = float(last.odometer_at_service or 0)
         km_since = current_odo - last_odo
-        km_remaining = max(0, avg_km - km_since)
+        km_remaining = max(0, avg_km - km_since) if km_since >= 0 else None
 
         # By km
         predicted_date_by_km = None
-        if km_since > 0 and last.service_date:
-            days_since = (datetime.utcnow().date() - last.service_date).days
+        if km_since > 0 and km_remaining is not None and last.service_date:
+            days_since = (today - last.service_date).days
             if days_since > 0:
                 km_per_day = km_since / days_since
                 if km_per_day > 0:
                     days_to_next = km_remaining / km_per_day
-                    predicted_date_by_km = datetime.utcnow().date() + timedelta(days=int(days_to_next))
+                    predicted_date_by_km = today + timedelta(days=int(days_to_next))
 
-        # By time
+        # By time (use next_service_date from DB if available, else avg_days)
         predicted_date_by_time = None
-        if last.service_date:
+        if last.next_service_date:
+            predicted_date_by_time = last.next_service_date
+        elif last.service_date:
             predicted_date_by_time = last.service_date + timedelta(days=int(avg_days))
 
         # Use earlier of the two
@@ -330,8 +371,10 @@ async def predict_next_service(db: AsyncSession, vehicle_id: int):
 
         urgency = "normal"
         if predicted:
-            days_until = (predicted - datetime.utcnow().date()).days
-            if days_until <= 7:
+            days_until = (predicted - today).days
+            if days_until <= 0:
+                urgency = "critical"
+            elif days_until <= 7:
                 urgency = "critical"
             elif days_until <= 30:
                 urgency = "soon"
@@ -342,21 +385,22 @@ async def predict_next_service(db: AsyncSession, vehicle_id: int):
             "last_service_km": last_odo,
             "avg_interval_km": round(avg_km),
             "avg_interval_days": round(avg_days),
-            "km_since_last": round(km_since),
+            "km_since_last": round(km_since) if km_since >= 0 else None,
             "predicted_date": predicted.isoformat() if predicted else None,
-            "km_remaining": round(km_remaining),
+            "km_remaining": round(km_remaining) if km_remaining is not None else None,
             "urgency": urgency,
         })
     else:
         # Not enough history — use next_service fields from last record
         if records:
             last = records[0]
+            km_rem = float(last.next_service_km or 0) - current_odo if last.next_service_km and has_odometer else None
             predictions.append({
                 "type": "general_service",
                 "last_service_date": last.service_date.isoformat() if last.service_date else None,
-                "last_service_km": float(last.odometer_at_service or 0),
+                "last_service_km": float(last.odometer_at_service or 0) if has_odometer else None,
                 "predicted_date": last.next_service_date.isoformat() if last.next_service_date else None,
-                "km_remaining": float(last.next_service_km or 0) - current_odo if last.next_service_km else None,
+                "km_remaining": km_rem if km_rem and km_rem >= 0 else None,
                 "urgency": "normal",
                 "note": "Insufficient history for prediction, using scheduled date",
             })

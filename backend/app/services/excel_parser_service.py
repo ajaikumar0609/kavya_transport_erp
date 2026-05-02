@@ -45,8 +45,7 @@ class InvoiceLineItem:
     remarks: Optional[str]
     needs_ocr: bool
     needs_ocr_verify: bool
-    excel_row_index: int          # actual Excel row number (1-based)
-    sl_no: Optional[int] = None   # SL NO column value for sort ordering
+    row_number: int
 
 
 @dataclass
@@ -68,12 +67,11 @@ class InvoiceParseResult:
 # ---------------------------------------------------------------------------
 
 COLUMN_MAP = {
-    "sl_no":           ["SL NO", "SL. NO", "SL.NO", "S.NO", "SR NO", "SR. NO", "SNO", "S NO", "SLNO"],
     "lr_number":       ["LR NO", "LR_NO", "LR NUMBER", "LR.NO"],
     "truck_number":    ["TRUCK NO", "TRUCK NUMBER", "VEHICLE NO"],
     "sat_slip_no":     ["SAT SLIP NO", "SATISFACTION SLIP", "SAT SLIP", "SATISFACTION SLIP NO"],
     "detention_days":  ["DETENTN DAYS", "DETENTION DAYS", "DET DAYS", "DETENTION"],
-    "truck_type":      ["DESC MEANS OF TRPT", "TRUCK TYPE", "TRPT TYPE", "VEHICLE TYPE", "DESC MEANS TRPT"],
+    "truck_type":      ["TRUCK TYPE", "TRPT TYPE", "VEHICLE TYPE"],
     "shipment_no":     ["SHIPMENT NO", "SHIPMENT NUMBER"],
     "service_po":      ["SERVICE PO", "SERVICE PO NO"],
     "entry_sheet_no":  ["ENTRY SHEET NO", "ENTRY SHEET"],
@@ -280,7 +278,6 @@ def parse_invoice_excel(file_path: str) -> InvoiceParseResult:
         )
 
     line_items: List[InvoiceLineItem] = []
-    seen_lrs: set = set()  # RULE 6 — no duplicates per batch
 
     def get_cell(row_values, key):
         idx = col_index.get(key)
@@ -288,10 +285,7 @@ def parse_invoice_excel(file_path: str) -> InvoiceParseResult:
             return None
         return row_values[idx]
 
-    for row_idx, row in enumerate(
-        ws.iter_rows(min_row=header_row + 1, values_only=True),
-        start=header_row + 1,
-    ):
+    for row_num, row in enumerate(ws.iter_rows(min_row=header_row + 1, values_only=True), start=header_row + 1):
         # Skip fully empty rows
         if all(c is None or str(c).strip() == "" for c in row):
             continue
@@ -301,23 +295,11 @@ def parse_invoice_excel(file_path: str) -> InvoiceParseResult:
             continue  # Skip rows without an LR number
 
         lr_number = _normalize_lr(str(lr_raw))
-        if not lr_number:
-            continue
-
-        # RULE 6 — skip duplicate LRs (keep first occurrence)
-        if lr_number in seen_lrs:
-            logger.warning(f"Duplicate LR skipped: {lr_number} (row {row_idx})")
-            continue
-        seen_lrs.add(lr_number)
-
         truck_type = _to_str(get_cell(row, "truck_type"))
         detention_days = _to_int(get_cell(row, "detention_days"))
 
-        # needs_ocr = truck_type column is blank (DESC MEANS OF TRPT)
-        needs_ocr = not bool(truck_type)
+        needs_ocr = truck_type is None or truck_type == ""
         needs_ocr_verify = detention_days is None
-
-        sl_no = _to_int(get_cell(row, "sl_no"))
 
         item = InvoiceLineItem(
             lr_number=lr_number,
@@ -340,16 +322,9 @@ def parse_invoice_excel(file_path: str) -> InvoiceParseResult:
             remarks=_to_str(get_cell(row, "remarks")),
             needs_ocr=needs_ocr,
             needs_ocr_verify=needs_ocr_verify,
-            excel_row_index=row_idx,   # ✅ FIXED: actual row number in the sheet
-            sl_no=sl_no,
+            row_number=row_num,
         )
         line_items.append(item)
-
-    # Sort by SL NO (primary), fall back to excel row index if SL NO missing
-    line_items = sorted(
-        line_items,
-        key=lambda x: (x.sl_no if x.sl_no is not None else x.excel_row_index),
-    )
 
     wb.close()
 

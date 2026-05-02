@@ -52,10 +52,13 @@ async def seed_roles(db: AsyncSession):
         {"name": "manager", "display_name": "Manager", "role_type": RoleType.MANAGER, "is_system": True},
         {"name": "fleet_manager", "display_name": "Fleet Manager", "role_type": RoleType.FLEET_MANAGER, "is_system": True},
         {"name": "accountant", "display_name": "Accountant", "role_type": RoleType.ACCOUNTANT, "is_system": True},
+        {"name": "auditor", "display_name": "Auditor", "role_type": RoleType.AUDITOR, "is_system": True},
+        {"name": "finance_manager", "display_name": "Finance Manager", "role_type": RoleType.FINANCE_MANAGER, "is_system": True},
         {"name": "project_associate", "display_name": "Project Associate", "role_type": RoleType.PROJECT_ASSOCIATE, "is_system": True},
         {"name": "driver", "display_name": "Driver", "role_type": RoleType.DRIVER, "is_system": True},
         {"name": "pump_operator", "display_name": "Pump Operator", "role_type": RoleType.PUMP_OPERATOR, "is_system": True},
         {"name": "tyre_inspector", "display_name": "Tyre Inspector", "role_type": RoleType.TYRE_INSPECTOR, "is_system": True},
+        {"name": "clerk", "display_name": "Clerk", "role_type": RoleType.CLERK, "is_system": True},
     ]
     created = []
     for role_data in roles:
@@ -78,7 +81,7 @@ async def seed_admin_user(db: AsyncSession):
     user = User(
         email="admin@kavyatransports.com",
         phone="9876543210",
-        password_hash=get_password_hash("Kavya@Admin2026!"),
+        password_hash=get_password_hash("admin123"),
         first_name="Kavya",
         last_name="Admin",
         is_active=True,
@@ -93,18 +96,22 @@ async def seed_admin_user(db: AsyncSession):
         db.add(UserRole(user_id=user.id, role_id=admin_role.id))
         await db.flush()
 
-    print(f"[OK] Admin user created: admin@kavyatransports.com / Kavya@Admin2026!")
+    print(f"[OK] Admin user created: admin@kavyatransports.com / admin123")
 
 
 async def seed_demo_users(db: AsyncSession):
-    """Create users for each role with production credentials."""
+    """Create demo users for each role."""
     demo_users = [
-        {"email": "manager@kavyatransports.com", "first_name": "Manager", "last_name": "Kavya", "phone": "9876510001", "role": "manager", "password": "Kavya@Manager2026!"},
-        {"email": "fleetmanager@kavyatransports.com", "first_name": "Fleet", "last_name": "Manager", "phone": "9876510002", "role": "fleet_manager", "password": "Kavya@Fleet2026!"},
-        {"email": "accountant@kavyatransports.com", "first_name": "Accountant", "last_name": "Kavya", "phone": "9876510003", "role": "accountant", "password": "Kavya@Accounts2026!"},
-        {"email": "finance@kavyatransports.com", "first_name": "Finance", "last_name": "Kavya", "phone": "9876510007", "role": "finance_manager", "password": "Kavya@Finance2026!"},
-        {"email": "driver@kavyatransports.com", "first_name": "Driver", "last_name": "Kavya", "phone": "9876510005", "role": "driver", "password": "Kavya@Driver2026!"},
-        {"email": "pump@kavyatransports.com", "first_name": "Pump", "last_name": "Operator", "phone": "9876510006", "role": "pump_operator", "password": "Kavya@Pump2026!"},
+        {"email": "manager@kavyatransports.com", "first_name": "Senthil", "last_name": "Kumar", "phone": "9876510001", "role": "manager"},
+        {"email": "fleet@kavyatransports.com", "first_name": "Murugan", "last_name": "Rajan", "phone": "9876510002", "role": "fleet_manager"},
+        {"email": "accountant@kavyatransports.com", "first_name": "Lakshmi", "last_name": "Priya", "phone": "9876510003", "role": "accountant"},
+        {"email": "auditor@kavyatransports.com", "first_name": "Priya", "last_name": "Audit", "phone": "9876510099", "role": "auditor"},
+        {"email": "finance@kavyatransports.com", "first_name": "Deepa", "last_name": "Sundaram", "phone": "9876510007", "role": "finance_manager"},
+        {"email": "pa@kavyatransports.com", "first_name": "Arun", "last_name": "Prakash", "phone": "9876510004", "role": "project_associate"},
+        {"email": "driver@kavyatransports.com", "first_name": "Karthik", "last_name": "Vel", "phone": "9876510005", "role": "driver"},
+        {"email": "pump@kavyatransports.com", "first_name": "Ravi", "last_name": "Kumar", "phone": "9876510006", "role": "pump_operator"},
+        {"email": "tyre@kavyatransports.com", "first_name": "Selvam", "last_name": "Tyre", "phone": "9876510008", "role": "tyre_inspector"},
+        {"email": "clerk@kavyatransports.com", "first_name": "Kavitha", "last_name": "Clerk", "phone": "9876510009", "role": "clerk"},
     ]
 
     created = []
@@ -116,7 +123,7 @@ async def seed_demo_users(db: AsyncSession):
         user = User(
             email=user_data["email"],
             phone=user_data["phone"],
-            password_hash=get_password_hash(user_data["password"]),
+            password_hash=get_password_hash("demo123"),
             first_name=user_data["first_name"],
             last_name=user_data["last_name"],
             is_active=True,
@@ -133,7 +140,7 @@ async def seed_demo_users(db: AsyncSession):
 
         created.append(f"{user_data['role']}:{user_data['email']}")
 
-    print(f"[OK] Users created: {created or 'already exist'}")
+    print(f"[OK] Demo users created: {created or 'already exist'}")
 
 
 async def seed_clients(db: AsyncSession):
@@ -1114,26 +1121,41 @@ async def seed_fuel_data(db: AsyncSession):
 
 
 async def main():
-    """Reset database and seed production user accounts only."""
-    print("\n--- Kavya Transports Database Reset & User Seeding ---\n")
+    """Run all seed functions."""
+    print("\n--- Kavya Transports Database Seeding ---\n")
 
     await create_tables()
 
     async with AsyncSessionLocal() as db:
         try:
+            # Core setup
             await seed_roles(db)
             await seed_admin_user(db)
             await seed_demo_users(db)
             await db.commit()
 
+            # Master data
+            await seed_clients(db)
+            await seed_vehicles(db)
+            await seed_drivers(db)
+            await seed_routes(db)
+            await seed_bank_accounts(db)
+            await seed_vendors(db)
+            await db.commit()
+
+            # Business data
+            await seed_jobs_trips_lrs(db)
+            await seed_invoices(db)
+            await seed_fuel_data(db)
+            await db.commit()
+
             print("\n--- Seed Complete ---")
-            print("  admin@kavyatransports.com        / Kavya@Admin2026!")
-            print("  manager@kavyatransports.com      / Kavya@Manager2026!")
-            print("  fleetmanager@kavyatransports.com / Kavya@Fleet2026!")
-            print("  accountant@kavyatransports.com   / Kavya@Accounts2026!")
-            print("  finance@kavyatransports.com      / Kavya@Finance2026!")
-            print("  driver@kavyatransports.com       / Kavya@Driver2026!")
-            print("  pump@kavyatransports.com         / Kavya@Pump2026!")
+            print("  Admin:  admin@kavyatransports.com / admin123")
+            print("  Demo:   manager|fleet|accountant|finance|pa|driver|pump@kavyatransports.com / demo123")
+            print("  Data:   6 clients, 8 vehicles, 6 drivers, 8 routes")
+            print("  Jobs:   20 completed + 5 active + 3 pending = 28 total")
+            print("  Finance: 10 invoices (7 paid, 3 pending)")
+            print("  Fuel:   1 depot tank, 15 fuel issues")
 
         except Exception as e:
             await db.rollback()

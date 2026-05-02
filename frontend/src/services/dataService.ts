@@ -2417,3 +2417,38 @@ export const paymentGatewayService = {
     return unwrap(data);
   },
 };
+
+export const auditorService = {
+  getDashboard: async (params?: { from_date?: string; to_date?: string }) => {
+    const data = await api.get('/auditor/dashboard', { params });
+    return unwrap(data);
+  },
+  getTrips: async (params?: { from_date?: string; to_date?: string; flag?: string; page?: number; per_page?: number }) => {
+    const data = await api.get('/auditor/trips', { params });
+    return unwrap(data);
+  },
+  getLRProfitability: async (params?: { from_date?: string; to_date?: string; sort_by?: string; page?: number; per_page?: number }) => {
+    const data = await api.get('/auditor/lr-profitability', { params });
+    return unwrap(data);
+  },
+  getFuelEfficiency: async (params?: { from_date?: string; to_date?: string }) => {
+    const data = await api.get('/auditor/fuel-efficiency', { params });
+    return unwrap(data);
+  },
+  getExpenses: async (params?: { from_date?: string; to_date?: string; flag?: string; page?: number; per_page?: number }) => {
+    const data = await api.get('/auditor/expenses', { params });
+    return unwrap(data);
+  },
+  getClientRisk: async (params?: { from_date?: string; to_date?: string }) => {
+    const data = await api.get('/auditor/client-risk', { params });
+    return unwrap(data);
+  },
+  getMaintenance: async () => {
+    const data = await api.get('/auditor/maintenance');
+    return unwrap(data);
+  },
+  exportReport: (report_type: string, params?: Record<string, string>) => {
+    const query = new URLSearchParams({ report_type, ...params }).toString();
+    window.open(`/api/v1/auditor/export/${report_type}?${query}`, '_blank');
+  },
+};

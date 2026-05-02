@@ -9,6 +9,7 @@ import '../../core/widgets/kt_loading_shimmer.dart';
 import '../../core/widgets/kt_error_state.dart';
 import '../../core/services/fcm_service.dart'; // unreadNotificationCountProvider
 import '../../providers/fleet_dashboard_provider.dart'; // apiServiceProvider
+import '../../services/api_service.dart'; // ApiService.baseUrl
 
 final _notificationsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async {
   final api = ref.read(apiServiceProvider);
@@ -18,7 +19,14 @@ final _notificationsProvider = FutureProvider.autoDispose<List<dynamic>>((ref) a
   return [];
 });
 
-const _wsBaseUrl = 'ws://10.0.2.2:8000/ws/notifications';
+/// Derive WebSocket notifications URL from ApiService.baseUrl
+/// e.g. https://api.kavyatransports.com/api/v1 → wss://api.kavyatransports.com/ws/notifications
+String get _wsBaseUrl {
+  final apiBase = ApiService.baseUrl; // e.g. https://api.kavyatransports.com/api/v1
+  final uri = Uri.parse(apiBase);
+  final wsScheme = uri.scheme == 'https' ? 'wss' : 'ws';
+  return '$wsScheme://${uri.host}${uri.port != 80 && uri.port != 443 ? ":${uri.port}" : ""}/ws/notifications';
+}
 
 class PANotificationsScreen extends ConsumerStatefulWidget {
   const PANotificationsScreen({super.key});

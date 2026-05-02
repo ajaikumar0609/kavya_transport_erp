@@ -77,8 +77,11 @@ async def get_presigned_url(s3_key: str, expires_in: int = 3600) -> str:
         raise HTTPException(status_code=503, detail=f"S3 presigned URL failed: {str(e)[:200]}")
 
 
-
 async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
+    """Convert a stored S3 URL (full URL or key) into a presigned URL.
+    Returns '' only when the key is confirmed missing (NoSuchKey/404).
+    Falls through and presigns for AccessDenied or other transient errors.
+    """
     if not url:
         return url
     if url.startswith('data:'):
@@ -91,6 +94,7 @@ async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
     if not _use_local_storage():
         try:
             import boto3
+            from botocore.exceptions import ClientError
             bucket = getattr(settings, 'AWS_S3_BUCKET', '')
             region = getattr(settings, 'AWS_REGION', '')
             full_prefix = 'https://' + bucket + '.s3.' + region + '.amazonaws.com/'
@@ -106,26 +110,24 @@ async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
                 region_name=region)
-            # Check if the key exists — only return '' for NoSuchKey/404,
-            # not for AccessDenied or other transient errors.
+            # Only return '' for NoSuchKey/404; presign anyway for other errors
             try:
                 s3.head_object(Bucket=bucket, Key=s3_key)
+            except ClientError as head_err:
+                code = head_err.response.get('Error', {}).get('Code', '')
+                if code in ('404', 'NoSuchKey'):
+                    logger.warning('presign_stored_url: key not found in S3: %s', s3_key)
+                    return ''
+                # AccessDenied or other — fall through and presign anyway
             except Exception as head_err:
-                from botocore.exceptions import ClientError
-                if isinstance(head_err, ClientError):
-                    code = head_err.response.get('Error', {}).get('Code', '')
-                    if code in ('404', 'NoSuchKey'):
-                        logger.warning('presign_stored_url: key not found in S3: %s', s3_key)
-                        return ''
-                    # AccessDenied or other — fall through and try to presign anyway
-                else:
-                    logger.warning('presign_stored_url: head_object error: %s', str(head_err)[:100])
+                logger.warning('presign_stored_url: head_object error: %s', str(head_err)[:100])
             return s3.generate_presigned_url('get_object',
                 Params={'Bucket': bucket, 'Key': s3_key}, ExpiresIn=expires_in)
         except Exception as e:
             logger.warning('presign_stored_url failed: ' + str(e)[:120])
             return url
     return url
+
 
 async def delete_file(s3_key: str) -> bool:
     try:

@@ -174,14 +174,11 @@ async def get_job_with_client_name(db: AsyncSession, job: Job) -> dict:
     from app.models.postgres.lr import LR
     from app.models.postgres.trip import Trip
     lr_count = (await db.execute(select(func.count(LR.id)).where(LR.job_id == job.id))).scalar() or 0
-    lr_id_res = await db.execute(select(LR.id).where(LR.job_id == job.id).order_by(LR.id.asc()).limit(1))
-    lr_id = lr_id_res.scalar_one_or_none()
     trip_count = (await db.execute(select(func.count(Trip.id)).where(Trip.job_id == job.id))).scalar() or 0
 
     return {
         **{c.key: getattr(job, c.key) for c in job.__table__.columns},
         "client_name": client_name,
-        "lr_id": lr_id,
         "lr_count": lr_count,
         "trip_count": trip_count,
         "status": job.status.value if hasattr(job.status, 'value') else str(job.status),

@@ -129,7 +129,7 @@ async def _send_morning_digest():
         queued = result.scalars().all()
         for nq in queued:
             try:
-                # Send FCM push for each queued notification
+                # Mark notification as sent (push notifications disabled)
                 nq.status = "sent"
                 nq.sent_at = now
                 logger.info(f"[Morning Digest] Sent queued notification {nq.id} to user {nq.target_user_id}")

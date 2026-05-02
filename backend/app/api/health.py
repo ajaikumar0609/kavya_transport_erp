@@ -2,14 +2,37 @@
 app/api/health.py
 Health check endpoints — no authentication required.
 Used by load balancers, UptimeRobot, smoke tests, and pre-deploy validation.
+
+Detailed endpoints (/health/db, /health/redis, etc.) are restricted to
+requests originating from localhost or RFC-1918 private IP ranges so that
+internal infrastructure state is not exposed to the public internet.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 import time
 import logging
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+_PRIVATE_PREFIXES = (
+    "127.", "::1", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+    "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
+    "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
+    "192.168.",
+)
+
+
+def _require_internal(request: Request) -> None:
+    """Raise 403 unless the caller is from localhost / private network."""
+    # X-Forwarded-For is set by the AWS ALB / nginx reverse proxy
+    forwarded = request.headers.get("x-forwarded-for")
+    client_ip = (forwarded.split(",")[0].strip() if forwarded else None) or (
+        request.client.host if request.client else "unknown"
+    )
+    if not any(client_ip.startswith(p) for p in _PRIVATE_PREFIXES):
+        raise HTTPException(status_code=403, detail="Restricted to internal networks")
 
 
 async def _check_postgres() -> dict:
@@ -79,34 +102,35 @@ async def health_liveness():
 
 # ── PostgreSQL check ───────────────────────────────────────────
 @router.get("/health/db", tags=["Health"], include_in_schema=False)
-async def health_db():
+async def health_db(request: Request):
+    _require_internal(request)
     result = await _check_postgres()
     status_code = 200 if result["status"] == "ok" else 503
-    from fastapi.responses import JSONResponse
     return JSONResponse(content=result, status_code=status_code)
 
 
 # ── Redis check ────────────────────────────────────────────────
 @router.get("/health/redis", tags=["Health"], include_in_schema=False)
-async def health_redis():
+async def health_redis(request: Request):
+    _require_internal(request)
     result = await _check_redis()
     status_code = 200 if result["status"] == "ok" else 503
-    from fastapi.responses import JSONResponse
     return JSONResponse(content=result, status_code=status_code)
 
 
 # ── Celery check ───────────────────────────────────────────────
 @router.get("/health/celery", tags=["Health"], include_in_schema=False)
-async def health_celery():
+async def health_celery(request: Request):
+    _require_internal(request)
     result = await _check_celery()
     status_code = 200 if result["status"] == "ok" else 503
-    from fastapi.responses import JSONResponse
     return JSONResponse(content=result, status_code=status_code)
 
 
 # ── Full readiness probe ────────────────────────────────────────
 @router.get("/health/full", tags=["Health"], include_in_schema=False)
-async def health_full():
+async def health_full(request: Request):
+    _require_internal(request)
     import asyncio
     pg, redis, mongo, celery = await asyncio.gather(
         _check_postgres(),

@@ -33,13 +33,20 @@ from typing import Optional
 
 import httpx
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-from app.db.postgres.connection import AsyncSessionLocal
 from app.db.mongodb.connection import MongoDB
 from app.models.postgres.vehicle import Vehicle
 from app.models.postgres.trip import Trip, TripStatusEnum
+
+
+def _make_session():
+    """Create a fresh NullPool engine+session for use inside celery forked workers."""
+    engine = create_async_engine(settings.POSTGRES_URL, poolclass=NullPool)
+    return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +182,7 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
     skipped = 0
     errors = 0
 
+    AsyncSessionLocal = _make_session()
     async with AsyncSessionLocal() as db:
         # Pre-fetch all vehicle registrations for fast lookup
         all_vehicles = await db.execute(
@@ -206,6 +214,9 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
                         current_longitude=pos["longitude"],
                         current_location=f"{pos['latitude']:.6f}, {pos['longitude']:.6f}",
                         odometer_reading=pos["odometer"] if pos["odometer"] > 0 else Vehicle.odometer_reading,
+                        last_speed=pos["speed"],
+                        last_ignition_on=pos["ignition_on"],
+                        last_gps_at=pos["timestamp"],
                     )
                 )
 

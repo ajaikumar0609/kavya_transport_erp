@@ -169,10 +169,20 @@ export default function UnifiedTrackingPage() {
   const activeRate = sum.total > 0 ? Math.round(((sum.moving + sum.idle) / sum.total) * 100) : 0;
   const withGps   = useMemo(() => vehicles.filter(v => v.lat && v.lng), [vehicles]);
 
+  const [selectedPath, setSelectedPath] = useState<[number,number][]>([]);
+
   const pick = useCallback((v: UnifiedVehicle) => {
     setSelected(v);
     setRightTab('detail');
     if (v.lat && v.lng) setFlyTo({ lat: v.lat, lng: v.lng });
+    // Load GPS trail — show past path on map when truck is tapped
+    setSelectedPath([]);
+    fetchPath(String(v.id), 24)
+      .then((data: any) => {
+        const pts: [number,number][] = (data?.points ?? []).map((p: any) => [p.lat as number, p.lng as number]);
+        setSelectedPath(pts);
+      })
+      .catch(() => {});
   }, []);
 
   return (
@@ -333,8 +343,8 @@ export default function UnifiedTrackingPage() {
       </div>
 
       {/* ── MAIN CONTENT ── */}
-      {tab === 'live'   && <LiveView    vehicles={vehicles} withGps={withGps} selected={selected} onSelect={pick} search={search} onSearch={setSearch} flyTo={flyTo} rightTab={rightTab} onRightTab={setRightTab} alerts={alerts} />}
-      {tab === 'fleet'  && <FleetView   vehicles={withGps} />}
+      {tab === 'live'   && <LiveView    vehicles={vehicles} withGps={withGps} selected={selected} onSelect={pick} search={search} onSearch={setSearch} flyTo={flyTo} rightTab={rightTab} onRightTab={setRightTab} alerts={alerts} selectedPath={selectedPath} />}
+      {tab === 'fleet'  && <FleetView   vehicles={withGps} onSelect={pick} selectedPath={selectedPath} />}
       {tab === 'replay' && <ReplayView  vehicles={vehicles} />}
       {tab === 'alerts' && <AlertsView  alerts={alerts} />}
     </div>
@@ -347,7 +357,7 @@ export default function UnifiedTrackingPage() {
 
 function LiveView({
   vehicles, withGps, selected, onSelect, search, onSearch,
-  flyTo, rightTab, onRightTab, alerts,
+  flyTo, rightTab, onRightTab, alerts, selectedPath,
 }: {
   vehicles: UnifiedVehicle[]; withGps: UnifiedVehicle[];
   selected: UnifiedVehicle|null; onSelect: (v:UnifiedVehicle)=>void;
@@ -355,6 +365,7 @@ function LiveView({
   flyTo: {lat:number;lng:number}|null;
   rightTab: string; onRightTab: (t:'detail'|'timeline'|'alerts')=>void;
   alerts: any[];
+  selectedPath: [number,number][];
 }) {
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -398,6 +409,23 @@ function LiveView({
           style={{ width:'100%', height:'100%' }}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
           {flyTo && <FlyTo lat={flyTo.lat} lng={flyTo.lng} />}
+
+          {/* GPS trail for selected vehicle — tap any truck to load its past path */}
+          {selectedPath.length > 1 && (
+            <>
+              <Polyline positions={selectedPath}
+                pathOptions={{ color:'#93c5fd', weight:3.5, opacity:0.6, dashArray:'8,5' }} />
+              <CircleMarker center={selectedPath[0]} radius={7}
+                pathOptions={{ color:'#15803d', fillColor:'#22c55e', fillOpacity:1, weight:2 }}>
+                <Popup><span style={{ fontFamily:'Inter,sans-serif', fontWeight:700, fontSize:11 }}>🟢 Trip Start</span></Popup>
+              </CircleMarker>
+              <CircleMarker center={selectedPath[selectedPath.length-1]} radius={7}
+                pathOptions={{ color:'#1d4ed8', fillColor:'#3b82f6', fillOpacity:1, weight:2 }}>
+                <Popup><span style={{ fontFamily:'Inter,sans-serif', fontWeight:700, fontSize:11 }}>📍 Last Known Position</span></Popup>
+              </CircleMarker>
+            </>
+          )}
+
           {withGps.map(v => (
             <Marker key={v.id} position={[v.lat!, v.lng!]} icon={mkMarker(v)} eventHandlers={{ click: () => onSelect(v) }}>
               <Popup>
@@ -531,8 +559,13 @@ function VehicleCard({ v, selected, onClick }: { v: UnifiedVehicle; selected: bo
             ⛽ {v.fuel_level}%
           </span>
         )}
-        <span className={`font-semibold ${v.provider_live ? 'text-green-600' : 'text-amber-600'}`}>
-          {v.provider_live ? '● Live' : `○ ${v.minutes_since_update != null ? `${Math.round(v.minutes_since_update)}m` : '?'}ago`}
+        <span className={`font-semibold ${
+          v.minutes_since_update == null || v.minutes_since_update <= 2 ? 'text-green-600' : 'text-amber-600'
+        }`}>
+          {v.minutes_since_update == null || v.minutes_since_update <= 2
+            ? '● Live'
+            : `○ ${Math.round(v.minutes_since_update)}m ago`
+          }
         </span>
       </div>
       {v.trip_id && (
@@ -595,13 +628,25 @@ function DetailPanel({ v }: { v: UnifiedVehicle|null }) {
         <InfoRow label="Latitude"    value={v.lat?.toFixed(6) ?? '—'} />
         <InfoRow label="Longitude"   value={v.lng?.toFixed(6) ?? '—'} />
         <InfoRow label="Heading"     value={v.heading ? `${v.heading}°` : '—'} />
-        <InfoRow label="Last update" value={v.minutes_since_update != null ? `${Math.round(v.minutes_since_update)} min ago` : '—'}
-          color={v.provider_live ? '#16a34a' : '#d97706'} />
+        <InfoRow
+          label="Last update"
+          value={
+            v.minutes_since_update == null ? '—'
+            : v.minutes_since_update <= 2  ? 'Just now'
+            : `${Math.round(v.minutes_since_update)} min ago`
+          }
+          color={
+            v.minutes_since_update == null        ? '#94a3b8'
+            : v.minutes_since_update <= 2         ? '#16a34a'
+            : v.minutes_since_update <= 30        ? '#d97706'
+            : '#e11d48'
+          }
+        />
       </InfoSection>
 
       <InfoSection title="🚛 Vehicle">
         <InfoRow label="Make / Model" value={[v.make,v.model].filter(Boolean).join(' ') || '—'} />
-        <InfoRow label="Odometer"     value={`${v.odometer.toLocaleString()} km`} />
+        <InfoRow label="Odometer"     value={v.odometer > 0 ? `${v.odometer.toLocaleString()} km` : '—'} />
         <InfoRow label="Engine"    value={v.engine_on ? 'Running' : 'Off'} color={v.engine_on?'#16a34a':'#e11d48'} />
         <InfoRow label="Ignition"  value={v.ignition_on ? 'On' : 'Off'} />
         {v.battery_voltage != null && <InfoRow label="Battery" value={`${v.battery_voltage} V`} />}
@@ -699,29 +744,65 @@ function InfoRow({ label, value, color }: { label: string; value: string; color?
 // ── Timeline ──────────────────────────────────────────────────────────
 
 function TimelinePanel({ v }: { v: UnifiedVehicle|null }) {
+  const { data: pathData, isLoading } = useQuery({
+    queryKey: ['timeline', v?.id],
+    queryFn: () => fetchPath(String(v!.id), 8),
+    enabled: !!v,
+    staleTime: 30000,
+  });
+
   if (!v) return <EmptyState icon="🕐" title="No vehicle selected" sub="Select a vehicle to view its timeline" />;
-  const events = [
-    { t:'08:12', label:'Trip started', color:'#22c55e', icon:'▶', bg:'#f0fdf4' },
-    { t:'10:22', label:'Idle — 14 min near toll', color:'#f59e0b', icon:'⏸', bg:'#fffbeb' },
-    { t:'11:55', label:'Overspeeding — 94 km/h', color:'#ef4444', icon:'⚡', bg:'#fff1f2' },
-    { t:'13:10', label:'Halt — delivery point', color:'#94a3b8', icon:'⏹', bg:'#f8fafc' },
-    { t:'14:02', label:'Resumed travel', color:'#22c55e', icon:'▶', bg:'#f0fdf4' },
-  ];
+
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center gap-2.5 py-10 text-gray-400 text-[12px]">
+      <span className="w-5 h-5 border-2 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+      Loading timeline…
+    </div>
+  );
+
+  const pts: any[] = (pathData?.points ?? []).slice(-20).reverse(); // most recent first
+
+  if (pts.length === 0) return (
+    <EmptyState icon="📭" title="No GPS history" sub={`No telemetry found for ${v.registration_number} in the last 8 hrs`} />
+  );
+
   return (
-    <div className="relative pl-5">
-      <div className="absolute left-[14px] top-2 bottom-2 w-px bg-gray-200" />
-      {events.map((e, i) => (
-        <div key={i} className="relative flex gap-3 pb-3.5">
-          <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white ring-4 ring-white shadow-sm z-10"
-            style={{ background:e.color }}>
-            {e.icon}
-          </div>
-          <div className="flex-1 rounded-xl border bg-white shadow-sm px-3 py-2" style={{ borderColor:'#e2e8f0' }}>
-            <div className="text-[10px] font-black text-gray-400 mb-0.5">{e.t}</div>
-            <div className="text-[12px] font-semibold text-gray-800">{e.label}</div>
-          </div>
-        </div>
-      ))}
+    <div>
+      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3">
+        Last {pts.length} positions · 8 hr window
+      </div>
+      <div className="relative pl-5">
+        <div className="absolute left-[14px] top-2 bottom-2 w-px bg-gray-200" />
+        {pts.map((pt: any, i: number) => {
+          const spd = pt.speed ?? 0;
+          const ign = pt.ignition_on ?? false;
+          const ev = spd > 80 ? { color:'#ef4444', icon:'⚡', label:`Overspeed — ${Math.round(spd)} km/h` }
+            : spd > 2  ? { color:'#22c55e', icon:'▶',  label:`Moving — ${Math.round(spd)} km/h` }
+            : ign      ? { color:'#f59e0b', icon:'⏸',  label:'Idling — engine on' }
+            :             { color:'#94a3b8', icon:'⏹',  label:'Stopped — engine off' };
+          const t = pt.timestamp
+            ? new Date(pt.timestamp).toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:false })
+            : '—';
+          return (
+            <div key={i} className="relative flex gap-3 pb-3">
+              <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-black text-white ring-4 ring-white shadow-sm z-10"
+                style={{ background: ev.color }}>
+                {ev.icon}
+              </div>
+              <div className="flex-1 rounded-xl border bg-white shadow-sm px-3 py-2" style={{ borderColor:'#e2e8f0' }}>
+                <div className="text-[10px] font-black text-gray-400 mb-0.5">{t}</div>
+                <div className="text-[12px] font-semibold text-gray-800">{ev.label}</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  {pt.lat?.toFixed(4)}, {pt.lng?.toFixed(4)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[10px] text-gray-400 text-center mt-1">
+        {pathData?.points?.length ?? 0} total GPS points in window
+      </div>
     </div>
   );
 }
@@ -756,30 +837,79 @@ function EmptyState({ icon, title, sub }: { icon: string; title: string; sub: st
 // FLEET MAP
 // ══════════════════════════════════════════════════════════════════════
 
-function FleetView({ vehicles }: { vehicles: UnifiedVehicle[] }) {
+function FleetView({ vehicles, onSelect, selectedPath }: {
+  vehicles: UnifiedVehicle[];
+  onSelect: (v: UnifiedVehicle) => void;
+  selectedPath: [number,number][];
+}) {
+  const [fleetSelected, setFleetSelected] = useState<UnifiedVehicle|null>(null);
+
+  const handleClick = (v: UnifiedVehicle) => {
+    setFleetSelected(v);
+    onSelect(v);
+  };
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="px-5 py-2.5 bg-white border-b border-gray-200 flex items-center gap-2.5 flex-shrink-0">
+      <div className="px-5 py-2.5 bg-white border-b border-gray-200 flex items-center gap-2.5 flex-shrink-0 flex-wrap">
         <span className="font-bold text-gray-800">Fleet Overview</span>
         <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-[11px] text-gray-500 font-semibold">
           {vehicles.length} vehicles with GPS
         </span>
         <span className="text-[11px] text-gray-400">Ring = provider liveness · Fill = status · Auto-refresh 10s</span>
+        {fleetSelected && (
+          <span className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-700 font-semibold">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: S[fleetSelected.status]?.dot ?? '#94a3b8' }} />
+            {fleetSelected.registration_number}
+            {fleetSelected.driver_name && <span className="text-blue-400">· {fleetSelected.driver_name}</span>}
+            {selectedPath.length > 0 && <span className="text-blue-400 font-normal">· {selectedPath.length} GPS pts</span>}
+          </span>
+        )}
       </div>
-      <MapContainer center={[10.5, 78.5]} zoom={6} zoomControl={false} attributionControl={false} style={{ flex:1 }}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
-        {vehicles.map(v => {
-          const s = S[v.status] ?? S.offline;
-          return (
-            <CircleMarker key={v.id} center={[v.lat!, v.lng!]} radius={7}
-              pathOptions={{ color:v.provider_live?'#22c55e':'#f59e0b', fillColor:s.fill, fillOpacity:0.85, weight:2.5 }}>
+      <div className="flex-1 relative overflow-hidden">
+        <MapContainer center={[10.5, 78.5]} zoom={6} zoomControl={false} attributionControl={false} style={{ width:'100%', height:'100%' }}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" maxZoom={19} />
+          {fleetSelected?.lat && fleetSelected?.lng && <FlyTo lat={fleetSelected.lat} lng={fleetSelected.lng} />}
+
+          {/* GPS trail for selected vehicle */}
+          {selectedPath.length > 1 && (
+            <>
+              <Polyline positions={selectedPath}
+                pathOptions={{ color:'#3b82f6', weight:3.5, opacity:0.7, dashArray:'8,5' }} />
+              <CircleMarker center={selectedPath[0]} radius={8}
+                pathOptions={{ color:'#15803d', fillColor:'#22c55e', fillOpacity:1, weight:2 }}>
+                <Popup><span style={{ fontFamily:'Inter,sans-serif', fontWeight:700 }}>\ud83d\udfe2 Trip Start</span></Popup>
+              </CircleMarker>
+              <CircleMarker center={selectedPath[selectedPath.length-1]} radius={8}
+                pathOptions={{ color:'#1d4ed8', fillColor:'#3b82f6', fillOpacity:1, weight:2 }}>
+                <Popup><span style={{ fontFamily:'Inter,sans-serif', fontWeight:700 }}>\ud83d\udccd Last Known</span></Popup>
+              </CircleMarker>
+            </>
+          )}
+
+          {vehicles.map(v => (
+            <Marker key={v.id} position={[v.lat!, v.lng!]} icon={mkMarker(v)}
+              eventHandlers={{ click: () => handleClick(v) }}>
               <Popup>
-                <strong>{v.registration_number}</strong> · {P[v.gps_provider]?.label ?? v.gps_provider} · {STATUS_LABEL[v.status] ?? v.status}
+                <div style={{ minWidth:180, fontFamily:'Inter,sans-serif', padding:'2px 0' }}>
+                  <div style={{ fontWeight:900, fontSize:14, marginBottom:3, color:'#0f172a' }}>{v.registration_number}</div>
+                  <div style={{ display:'flex', gap:5, marginBottom:5, flexWrap:'wrap' }}>
+                    <span style={{ background:S[v.status]?.bg, color:S[v.status]?.text, border:`1px solid ${S[v.status]?.border}`, borderRadius:99, padding:'2px 8px', fontSize:10, fontWeight:700 }}>
+                      {STATUS_LABEL[v.status]}
+                    </span>
+                    <span style={{ background:'#f1f5f9', color:'#475569', borderRadius:99, padding:'2px 8px', fontSize:10, fontWeight:600 }}>
+                      {P[v.gps_provider]?.label ?? v.gps_provider}
+                    </span>
+                  </div>
+                  {v.speed > 0 && <div style={{ fontSize:11, color:'#16a34a', fontWeight:700, marginBottom:2 }}>{Math.round(v.speed)} km/h</div>}
+                  {v.driver_name && <div style={{ fontSize:11, color:'#64748b', marginBottom:2 }}>👤 {v.driver_name}</div>}
+                  <div style={{ fontSize:10, color:'#94a3b8', marginTop:4, fontStyle:'italic' }}>Click to load GPS trail</div>
+                </div>
               </Popup>
-            </CircleMarker>
-          );
-        })}
-      </MapContainer>
+            </Marker>
+          ))}
+        </MapContainer>
+      </div>
     </div>
   );
 }
@@ -802,6 +932,25 @@ function ReplayView({ vehicles }: { vehicles: UnifiedVehicle[] }) {
   });
 
   const pts: [number,number][] = (pathData?.points ?? []).map((p:any) => [p.lat, p.lng]);
+
+  // Compute distance + speed stats from GPS points
+  const replayStats = useMemo(() => {
+    if (pts.length < 2) return { dist: 0, maxSpd: 0, avgSpd: 0 };
+    let dist = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const [la1,lo1] = pts[i-1]; const [la2,lo2] = pts[i];
+      const dLa=(la2-la1)*Math.PI/180, dLo=(lo2-lo1)*Math.PI/180;
+      const a=Math.sin(dLa/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+      dist+=6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+    const rawPts = (pathData?.points ?? []) as {speed?:number}[];
+    const speeds = rawPts.map(p=>p.speed??0).filter(s=>s>0);
+    return {
+      dist,
+      maxSpd: speeds.length ? Math.max(...speeds) : 0,
+      avgSpd: speeds.length ? speeds.reduce((a,b)=>a+b,0)/speeds.length : 0,
+    };
+  }, [pts, pathData]);
 
   const toggle = () => {
     if (playing) { clearInterval(ticker.current); setPlaying(false); }
@@ -868,14 +1017,36 @@ function ReplayView({ vehicles }: { vehicles: UnifiedVehicle[] }) {
               pathOptions={{ color:'#2563eb', weight:4.5, opacity:0.95 }}
             />
           )}
+
+          {/* Animated cursor marker that follows the scrubber */}
+          {pts.length > 0 && (() => {
+            const idx = Math.max(0, Math.min(Math.floor(pts.length * progress / 100), pts.length-1));
+            const pt = pts[idx];
+            if (!pt) return null;
+            const icon = L.divIcon({
+              className: '',
+              html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 40" width="32" height="40">
+                <circle cx="16" cy="16" r="14" fill="white" stroke="#2563eb" stroke-width="2.5"/>
+                <circle cx="16" cy="16" r="9" fill="#2563eb"/>
+                <text x="16" y="21" text-anchor="middle" font-family="Inter,sans-serif" font-size="9" font-weight="900" fill="white">▶</text>
+                <polygon points="12,30 16,40 20,30" fill="#2563eb" opacity=".7"/>
+              </svg>`,
+              iconSize: [32, 40],
+              iconAnchor: [16, 38],
+            });
+            return <Marker position={pt} icon={icon} />;
+          })()}
         </MapContainer>
 
         {/* Stats sidebar */}
         <div className="w-56 bg-white border-l border-gray-200 p-4 overflow-y-auto flex-shrink-0 flex flex-col gap-3">
           <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Replay Stats</div>
-          <StatsCard icon="📍" label="GPS Points"  value={String(pts.length)} />
-          <StatsCard icon="⏱"  label="Time window" value={`${hours}h`} />
-          <StatsCard icon="▶"  label="Progress"    value={`${Math.round(progress)}%`} />
+          <StatsCard icon="📍" label="GPS Points"   value={String(pts.length)} />
+          <StatsCard icon="⏱"  label="Time window"  value={`${hours}h`} />
+          <StatsCard icon="▶"  label="Progress"     value={`${Math.round(progress)}%`} />
+          {replayStats.dist > 0    && <StatsCard icon="📏" label="Distance"    value={`${replayStats.dist.toFixed(1)} km`} />}
+          {replayStats.maxSpd > 0  && <StatsCard icon="⚡" label="Max Speed"   value={`${Math.round(replayStats.maxSpd)} km/h`} />}
+          {replayStats.avgSpd > 0  && <StatsCard icon="🏃" label="Avg Speed"   value={`${Math.round(replayStats.avgSpd)} km/h`} />}
           {!vid && (
             <div className="mt-1 p-3 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-700 leading-relaxed">
               Select a vehicle above to load and replay its GPS path.

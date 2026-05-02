@@ -30,6 +30,8 @@ ROLE_REDIRECT_MAP = {
     "fleet_manager": "/fleet/dashboard",
     "accountant": "/accountant/dashboard",
     "finance_manager": "/fm/dashboard",
+    "auditor": "/auditor/dashboard",
+    "clerk": "/clerk/dashboard",
     "project_associate": "/dashboard",
     "driver": "/driver/trips",
     "pump_operator": "/pump/dashboard",
@@ -71,16 +73,18 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
         joining_date=str(user.joining_date) if user.joining_date else None,
         emergency_contact_name=user.emergency_contact_name,
         emergency_contact_phone=user.emergency_contact_phone,
-        bank_account_holder=user.bank_account_holder,
-        bank_name=user.bank_name,
-        account_number=user.account_number,
-        ifsc_code=user.ifsc_code,
-        account_type=user.account_type,
-        upi_id=user.upi_id,
-        salary_amount=user.salary_amount,
+        # Sensitive financial/ID fields intentionally excluded from login response.
+        # Fetch them via GET /api/v1/users/me when needed.
+        bank_account_holder=None,
+        bank_name=None,
+        account_number=None,
+        ifsc_code=None,
+        account_type=None,
+        upi_id=None,
+        salary_amount=None,
         pay_type=user.pay_type,
-        aadhaar_file_url=user.aadhaar_file_url,
-        aadhaar_file_name=user.aadhaar_file_name,
+        aadhaar_file_url=None,
+        aadhaar_file_name=None,
     )
     return APIResponse(success=True, data={
         "access_token": tokens.access_token,
@@ -93,17 +97,66 @@ async def login(data: LoginRequest, request: Request, db: AsyncSession = Depends
 @router.post("/send-otp", response_model=APIResponse)
 async def send_otp_for_login(data: OtpSendRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
-    Step 1 of phone OTP login.
-    Rate-limited: max 3 OTPs per phone per 15 minutes.
-    Verifies password first (prevents phone enumeration), then sends OTP via
-    Brevo SMS (primary) + Brevo email (fallback). In dev mode, logs OTP to
-    server console if both delivery channels fail (never sent in response).
+    Step 1 of OTP login. Supports two channels:
+      channel='sms'   — phone (10-digit) + password → OTP via MSG91/Brevo SMS
+      channel='email' — identifier (email or employee ID) + password → OTP via Brevo email
+    Rate-limited per phone/identifier and per IP.
+    Password is verified first to prevent enumeration.
     """
     import asyncio
     from app.services.otp_service import create_otp_session, send_otp as _send_otp
     from app.services.brevo_service import send_email_otp
     from app.services.msg91_service import send_otp_msg91
     from app.db.mongodb.connection import MongoDB
+
+    channel = (data.channel or "sms").lower()
+    client_ip = request.client.host if request.client else "unknown"
+
+    # ── Email channel ────────────────────────────────────────────────────────
+    if channel == "email":
+        if not data.identifier:
+            raise HTTPException(status_code=400, detail="Provide your email address or Employee ID")
+        identifier = data.identifier.strip()
+
+        await otp_send_limiter.check(f"identifier:{identifier}")
+        await otp_send_ip_limiter.check(f"ip:{client_ip}")
+
+        user = await authenticate_by_identifier(db, identifier, data.password)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        if not user.email:
+            raise HTTPException(status_code=400, detail="No email address on file — use SMS OTP instead")
+
+        # Use phone for session storage (fallback to "email" placeholder if no phone)
+        phone_for_session = user.phone.lstrip("+91").lstrip("91")[-10:] if user.phone else "0000000000"
+        session = await create_otp_session(user.id, phone_for_session)
+        otp = session["otp"]
+
+        email_ok = await send_email_otp(user.email, otp)
+        delivery = "email" if email_ok else "none"
+
+        # Mask email: abc***@example.com
+        parts = user.email.split("@")
+        email_masked = parts[0][:3] + "***@" + parts[1] if len(parts) == 2 else user.email[:3] + "***"
+
+        if delivery == "none":
+            logger.warning(f"[OTP] Email delivery failed for user {user.id}")
+            if settings.ENVIRONMENT != "production":
+                logger.warning(f"[OTP-DEV] OTP for session {session['session_id']}: {otp}")
+
+        return APIResponse(
+            success=True,
+            data={
+                "session_id": session["session_id"],
+                "email_masked": email_masked,
+                "delivery": delivery,
+            },
+            message=f"OTP sent to {email_masked}" if delivery == "email" else "OTP generated — check server logs",
+        )
+
+    # ── SMS channel (default) ─────────────────────────────────────────────────
+    if not data.phone:
+        raise HTTPException(status_code=400, detail="Provide your registered mobile number")
 
     phone = data.phone.strip()
     if phone.startswith("+91"):
@@ -113,7 +166,6 @@ async def send_otp_for_login(data: OtpSendRequest, request: Request, db: AsyncSe
     if len(phone) != 10 or not phone.isdigit():
         raise HTTPException(status_code=400, detail="Enter a valid 10-digit Indian mobile number")
 
-    client_ip = request.client.host if request.client else "unknown"
     await otp_send_limiter.check(f"phone:{phone}")
     await otp_send_ip_limiter.check(f"ip:{client_ip}")
 
@@ -124,9 +176,22 @@ async def send_otp_for_login(data: OtpSendRequest, request: Request, db: AsyncSe
     session = await create_otp_session(user.id, phone)
     otp = session["otp"]
 
-    # Try MSG91 SendOTP first (DLT-compliant SMS for India)
+    # ── SMS delivery priority: 2Factor → MSG91 → Brevo SMS → email ──
     sms_ok = False
-    if settings.MSG91_ENABLED:
+
+    # 1. Try 2Factor.in (primary)
+    if settings.TWOFACTOR_ENABLED:
+        try:
+            from app.services.twofactor_service import send_otp_2factor
+            tf_ok, tf_msg = await send_otp_2factor(phone, otp)
+            sms_ok = tf_ok
+            if not sms_ok:
+                logger.warning(f"[OTP] 2Factor send failed: {tf_msg}")
+        except Exception as exc:
+            logger.warning(f"[OTP] 2Factor exception: {exc}")
+
+    # 2. Fall back to MSG91 if 2Factor failed
+    if not sms_ok and settings.MSG91_ENABLED:
         try:
             msg91_ok, _ = await send_otp_msg91(phone, otp)
             sms_ok = msg91_ok
@@ -135,10 +200,13 @@ async def send_otp_for_login(data: OtpSendRequest, request: Request, db: AsyncSe
 
     email_ok = False
     if not sms_ok:
-        # MSG91 failed — fallback to Brevo SMS then email
+        # 3. Final fallback: Brevo SMS + email in parallel
+        async def _noop() -> bool:
+            return False
+
         brevo_sms_ok, email_result = await asyncio.gather(
             _send_otp(phone, otp),
-            send_email_otp(user.email, otp),
+            send_email_otp(user.email, otp) if user.email else _noop(),
             return_exceptions=True,
         )
         sms_ok = brevo_sms_ok is True

@@ -61,10 +61,10 @@ export default function SupplierDashboardPage() {
   const pendingAmount = statement?.pending_amount ?? 0;
 
   const handleLogout = () => {
-    localStorage.removeItem('portal_token');
-    localStorage.removeItem('portal_role');
-    localStorage.removeItem('portal_name');
-    localStorage.removeItem('access_token');
+    sessionStorage.removeItem('portal_token');
+    sessionStorage.removeItem('portal_role');
+    sessionStorage.removeItem('portal_name');
+    sessionStorage.removeItem('access_token');
     navigate('/portal/supplier');
   };
 

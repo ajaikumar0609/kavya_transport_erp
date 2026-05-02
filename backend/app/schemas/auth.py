@@ -68,11 +68,6 @@ class LogoutRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
-class FCMTokenRequest(BaseModel):
-    fcm_token: str
-    device_type: str = "android"  # android, ios, web
-
-
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(..., min_length=6)
@@ -85,9 +80,11 @@ class UpdatePhotoRequest(BaseModel):
 # ── Market Driver OTP ──────────────────────────────────────────────────────────
 
 class OtpSendRequest(BaseModel):
-    """Staff OTP login — phone + password required to prevent enumeration."""
-    phone: str = Field(..., description="10-digit Indian mobile number (without +91)")
+    """Staff OTP login — phone or identifier + password required to prevent enumeration."""
+    phone: Optional[str] = Field(None, description="10-digit Indian mobile number (SMS channel)")
+    identifier: Optional[str] = Field(None, description="Email or Employee ID (email channel)")
     password: str = Field(..., min_length=4)
+    channel: str = Field("sms", description="Delivery channel: 'sms' or 'email'")
 
 
 class MarketDriverOtpSendRequest(BaseModel):

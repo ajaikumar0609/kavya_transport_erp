@@ -139,7 +139,21 @@ class Invoice(Base, TimestampMixin, SoftDeleteMixin):
     
     # File
     pdf_url = Column(String(500), nullable=True)
-    
+
+    # ── Manual Payment Proof (used when Razorpay payment link is not sent) ──────
+    payment_proof_url = Column(String(500), nullable=True)
+    payment_proof_filename = Column(String(255), nullable=True)
+    payment_proof_note = Column(Text, nullable=True)      # e.g. "UTR: 4039201832"
+    payment_method_manual = Column(String(50), nullable=True)  # bank_transfer / cheque / cash / other
+    marked_paid_by_user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    marked_paid_at = Column(DateTime, nullable=True)
+
+    # ── Auditor Review ────────────────────────────────────────────────────────────
+    # auditor_review_status: PENDING | APPROVED | FLAGGED (NULL = not yet submitted)
+    auditor_review_status = Column(String(20), nullable=True)
+    auditor_reviewed_by = Column(Integer, ForeignKey('users.id'), nullable=True)
+    auditor_reviewed_at = Column(DateTime, nullable=True)
+
     # Multi-tenant
     tenant_id = Column(Integer, ForeignKey('tenants.id'), nullable=True)
     branch_id = Column(Integer, ForeignKey('branches.id'), nullable=True)

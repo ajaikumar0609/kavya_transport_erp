@@ -1,12 +1,12 @@
 ﻿import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { vehicleService, documentService } from '@/services/dataService';
+import { vehicleService } from '@/services/dataService';
 import { StatusBadge, LoadingPage, Modal } from '@/components/common/Modal';
 import { SubmitButton } from '@/components/common/SubmitButton';
 import {
   ArrowLeft, Edit, ChevronRight, Truck, Cpu, Fuel, Gauge,
-  Hash, Calendar, Weight, Navigation, ShieldCheck, FileText, AlertTriangle,
+  Hash, Calendar, Weight, Navigation, ShieldCheck, FileText,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { OwnershipType, VehicleStatus } from '@/types';
@@ -41,12 +41,6 @@ export default function VehicleDetailPage() {
   const { data: vehicle, isLoading } = useQuery({
     queryKey: ['vehicle', id],
     queryFn: () => vehicleService.get(Number(id)),
-    enabled: !!id,
-  });
-
-  const { data: vehicleDocs } = useQuery({
-    queryKey: ['entity-docs', 'vehicle', Number(id)],
-    queryFn: () => documentService.listForEntity(Number(id), 'vehicle'),
     enabled: !!id,
   });
 
@@ -173,62 +167,6 @@ export default function VehicleDetailPage() {
           </div>
           <h3 className="font-semibold text-gray-900">Documents</h3>
         </div>
-        {/* Compliance expiry summary */}
-        {(() => { try {
-          const COMPLIANCE_TYPES = [
-            { type: 'fitness', label: 'Fitness' },
-            { type: 'insurance', label: 'Insurance' },
-            { type: 'permit', label: 'Permit' },
-            { type: 'puc', label: 'PUC' },
-            { type: 'rc', label: 'RC' },
-          ];
-          const docsByType: Record<string, any> = {};
-          for (const doc of vehicleDocs ?? []) {
-            const t = (doc.document_type ?? '').toLowerCase();
-            if (!docsByType[t]) docsByType[t] = doc;
-          }
-          const items = COMPLIANCE_TYPES.map(({ type, label }) => {
-            const doc = docsByType[type];
-            const expiry = doc?.expiry_date;
-            let status: 'valid' | 'expiring' | 'expired' | 'missing' = 'missing';
-            let daysLeft = 0;
-            if (expiry) {
-              daysLeft = Math.floor((new Date(expiry).getTime() - Date.now()) / 86_400_000);
-              status = daysLeft < 0 ? 'expired' : daysLeft <= 30 ? 'expiring' : 'valid';
-            }
-            return { type, label, expiry, status, daysLeft };
-          });
-          const hasAny = items.some(i => i.status !== 'missing');
-          if (!hasAny) return null;
-          return (
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-5 p-4 bg-gray-50 rounded-xl">
-              {items.map(({ label, expiry, status, daysLeft }) => (
-                <div key={label} className="flex flex-col gap-1">
-                  <span className="text-xs text-gray-500 font-medium">{label}</span>
-                  {status === 'missing' ? (
-                    <span className="text-xs text-gray-400">—</span>
-                  ) : (
-                    <>
-                      <span className={`text-xs font-semibold ${
-                        status === 'expired' ? 'text-red-600' :
-                        status === 'expiring' ? 'text-amber-600' : 'text-green-600'
-                      }`}>
-                        {status === 'expired' ? `Expired ${Math.abs(daysLeft)}d ago` :
-                         status === 'expiring' ? `Expiring in ${daysLeft}d` : 'Valid'}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(expiry!).toLocaleDateString('en-IN')}
-                      </span>
-                    </>
-                  )}
-                  {status === 'expiring' && (
-                    <AlertTriangle size={12} className="text-amber-500" />
-                  )}
-                </div>
-              ))}
-            </div>
-          );
-        } catch { return null; } })()}
         <DocumentChecklist
           entityType="vehicle"
           entityId={vehicle.id}

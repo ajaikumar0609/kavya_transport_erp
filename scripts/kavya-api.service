@@ -1,0 +1,80 @@
+# ============================================================
+# Systemd Service Files — Kavya Transports ERP
+# ============================================================
+# Copy to /etc/systemd/system/ then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable kavya-api kavya-worker kavya-beat
+#   sudo systemctl start  kavya-api kavya-worker kavya-beat
+
+# ── kavya-api.service ───────────────────────────────────────
+[Unit]
+Description=Kavya Transports FastAPI (uvicorn)
+After=network.target postgresql.service redis.service
+
+[Service]
+User=kavya
+Group=kavya
+WorkingDirectory=/var/www/kavya/backend
+EnvironmentFile=/var/www/kavya/backend/.env
+ExecStart=/var/www/kavya/venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 2 \
+    --loop uvloop \
+    --access-log \
+    --log-level info
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/www/kavya/backend/uploads /var/log/kavya
+
+[Install]
+WantedBy=multi-user.target
+
+
+# ── kavya-worker.service (paste as separate file) ──────────
+# [Unit]
+# Description=Kavya Transports Celery Worker
+# After=network.target redis.service
+#
+# [Service]
+# User=kavya
+# Group=kavya
+# WorkingDirectory=/var/www/kavya/backend
+# EnvironmentFile=/var/www/kavya/backend/.env
+# ExecStart=/var/www/kavya/venv/bin/celery -A app.celery_app worker \
+#     --loglevel=info --concurrency=2 -Q default,trips,finance
+# Restart=always
+# RestartSec=10
+# StandardOutput=journal
+# StandardError=journal
+#
+# [Install]
+# WantedBy=multi-user.target
+
+
+# ── kavya-beat.service (paste as separate file) ─────────────
+# [Unit]
+# Description=Kavya Transports Celery Beat (Scheduler)
+# After=network.target redis.service
+#
+# [Service]
+# User=kavya
+# Group=kavya
+# WorkingDirectory=/var/www/kavya/backend
+# EnvironmentFile=/var/www/kavya/backend/.env
+# ExecStart=/var/www/kavya/venv/bin/celery -A app.celery_app beat \
+#     --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+# Restart=always
+# RestartSec=10
+# StandardOutput=journal
+# StandardError=journal
+#
+# [Install]
+# WantedBy=multi-user.target

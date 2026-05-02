@@ -16,8 +16,10 @@ from app.schemas.finance import (
     RouteCreate, RouteUpdate,
 )
 from app.services import finance_service
+from app.services import email_service
 from app.models.postgres.client import Client
 from app.models.postgres.finance import Vendor
+from app.utils.tenant_guard import assert_tenant_access
 
 router = APIRouter()
 
@@ -28,10 +30,11 @@ async def list_invoices(
     page: int = Query(1, ge=1), limit: int = Query(20, ge=1, le=500),
     search: Optional[str] = None, status: Optional[str] = None,
     client_id: Optional[int] = None, trip_id: Optional[int] = None,
+    has_payment_proof: Optional[bool] = None,
     db: AsyncSession = Depends(get_db), current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.INVOICE_READ)),
 ):
-    invoices, total = await finance_service.list_invoices(db, page, limit, search, status, client_id, trip_id)
+    invoices, total = await finance_service.list_invoices(db, page, limit, search, status, client_id, trip_id, has_payment_proof)
     pages = (total + limit - 1) // limit
     items = []
     for inv in invoices:
@@ -40,10 +43,14 @@ async def list_invoices(
 
 
 @router.get("/invoices/{invoice_id}", response_model=APIResponse)
-async def get_invoice(invoice_id: int, db: AsyncSession = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+async def get_invoice(
+    invoice_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _perm=Depends(require_permission(Permissions.INVOICE_READ)),
+):
     inv = await finance_service.get_invoice(db, invoice_id)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    assert_tenant_access(inv, current_user, not_found_detail="Invoice not found")
     return APIResponse(success=True, data=await finance_service.get_invoice_with_details(db, inv))
 
 
@@ -54,6 +61,14 @@ async def create_invoice(
     _perm=Depends(require_permission(Permissions.INVOICE_CREATE)),
 ):
     inv = await finance_service.create_invoice(db, data.model_dump(), current_user.user_id)
+    # Fire-and-forget email notification to invoice creator (non-blocking)
+    email_service.notify_invoice_created(
+        db,
+        triggered_by_user_id=current_user.user_id,
+        invoice_number=inv.invoice_number,
+        total_amount=str(getattr(inv, "total_amount", "0.00")),
+        due_date=str(getattr(inv, "due_date", "")) if getattr(inv, "due_date", None) else "",
+    )
     return APIResponse(success=True, data={"id": inv.id, "invoice_number": inv.invoice_number}, message="Invoice created")
 
 
@@ -63,6 +78,8 @@ async def update_invoice(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.INVOICE_UPDATE)),
 ):
+    existing = await finance_service.get_invoice(db, invoice_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Invoice not found")
     inv = await finance_service.update_invoice(db, invoice_id, data.model_dump(exclude_unset=True))
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -75,6 +92,8 @@ async def delete_invoice(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.INVOICE_DELETE)),
 ):
+    existing = await finance_service.get_invoice(db, invoice_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Invoice not found")
     success = await finance_service.delete_invoice(db, invoice_id)
     if not success:
         raise HTTPException(status_code=404, detail="Invoice not found")
@@ -88,8 +107,7 @@ async def send_invoice(
     _perm=Depends(require_permission(Permissions.INVOICE_UPDATE)),
 ):
     inv = await finance_service.get_invoice(db, invoice_id)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    assert_tenant_access(inv, current_user, not_found_detail="Invoice not found")
     from app.models.postgres.finance import InvoiceStatus
     if inv.status not in (InvoiceStatus.DRAFT, InvoiceStatus.SENT):
         raise HTTPException(status_code=400, detail=f"Cannot send invoice with status '{inv.status.value}'")

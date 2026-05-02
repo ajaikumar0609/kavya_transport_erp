@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "transport_erp"
-    POSTGRES_PASSWORD: str = "password"
+    POSTGRES_PASSWORD: str = ""  # Must be set via environment variable — no default allowed in production
     POSTGRES_DB: str = "transport_erp"
     
     @property
@@ -107,10 +107,7 @@ class Settings(BaseSettings):
     
     # Google APIs
     GOOGLE_MAPS_API_KEY: str = "YOUR_GOOGLE_MAPS_API_KEY_HERE"
-    
-    # Firebase
-    FIREBASE_CREDENTIALS_PATH: str = "YOUR_FIREBASE_CREDENTIALS_PATH_HERE"
-    
+
     # File Storage (S3)
     STORAGE_TYPE: str = "local"
     STORAGE_BUCKET: str = "transport-erp"
@@ -120,7 +117,14 @@ class Settings(BaseSettings):
     AWS_REGION: str = "ap-south-1"
     MINIO_ENDPOINT: Optional[str] = None
     
-    # Communication — MSG91 SendOTP API
+    # Communication — 2Factor.in SMS OTP API
+    TWOFACTOR_ENABLED: bool = True
+    TWOFACTOR_API_KEY: str = "ca8497f8-41ac-11f1-9800-0200cd936042"
+    # Optional: name of an approved SMS OTP template on 2Factor dashboard.
+    # When set, appended to the URL to force SMS delivery instead of voice.
+    TWOFACTOR_TEMPLATE_NAME: str = ""
+
+    # Communication — MSG91 SendOTP API (fallback)
     MSG91_ENABLED: bool = True
     MSG91_AUTH_KEY: str = "YOUR_MSG91_AUTH_KEY_HERE"
     MSG91_OTP_TEMPLATE_ID: str = "69ebeb-b96f6cb395630194e2"
@@ -195,6 +199,11 @@ class Settings(BaseSettings):
     IALERT_POLL_INTERVAL_SECONDS: int = 60  # Polling frequency (seconds)
     IALERT_ENABLED: bool = False  # Enable only after token is configured
 
+    # KT Telematic (KTT) GPS Pull API
+    KTT_ENABLED: bool = False  # Enable after setting KTT_ACCESS_TOKEN
+    KTT_ACCESS_TOKEN: Optional[str] = None  # Token from KTT email (X-AT-AccessToken)
+    KTT_POLL_INTERVAL_SECONDS: int = 30
+
     # Tata Motors GPS (fill when API key arrives)
     TATA_GPS_API_KEY: Optional[str] = None
     TATA_GPS_API_ENDPOINT: str = "https://fleet.tatamotors.com/api/v1"
@@ -206,9 +215,6 @@ class Settings(BaseSettings):
     # GPS feature flags
     GPS_CACHE_TTL: int = 120  # seconds to show stale data before marking offline
     
-    # Push Notifications (Firebase)
-    FCM_SERVER_KEY: Optional[str] = None
-
     # Razorpay — incoming client payment gateway
     # Set RAZORPAY_ENABLED=true once keys arrive (2-3 days)
     RAZORPAY_ENABLED: bool = False

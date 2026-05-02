@@ -10,11 +10,10 @@ class ApiService {
     defaultValue: '',
   );
 
-  // Android emulator cannot reach host via localhost; use 10.0.2.2 by default.
+  // Production API. Emulator dev override via --dart-define=API_BASE_URL=http://10.0.2.2:8000/api/v1
   static String get baseUrl {
     if (_envBaseUrl.isNotEmpty) return _envBaseUrl;
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000/api/v1';
-    return 'http://localhost:8000/api/v1';
+    return 'https://api.kavyatransports.com/api/v1';
   }
 
   final Dio _dio;
@@ -140,6 +139,26 @@ class ApiService {
   Future<Map<String, dynamic>> login(String email, String password) async {
     final response = await _dio.post('/auth/login',
         data: {'identifier': email, 'password': password});
+    return response.data;
+  }
+
+  /// Step-1 of OTP login — sends OTP to the user's registered phone via 2Factor.
+  /// Accepts phone (10-digit) + password. Returns session_id + phone_masked.
+  Future<Map<String, dynamic>> sendOtp(String phone, String password) async {
+    final response = await _dio.post('/auth/send-otp', data: {
+      'phone': phone,
+      'password': password,
+      'channel': 'sms',
+    });
+    return response.data;
+  }
+
+  /// Step-2 of OTP login — verifies the OTP and returns tokens + user.
+  Future<Map<String, dynamic>> verifyOtp(String sessionId, String otp) async {
+    final response = await _dio.post('/auth/verify-otp', data: {
+      'session_id': sessionId,
+      'otp': otp,
+    });
     return response.data;
   }
 

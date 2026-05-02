@@ -81,7 +81,7 @@ async def get_last_cargo_items_for_client(db: AsyncSession, client_id: int) -> l
     ]
 
 
-async def list_lrs(db: AsyncSession, page: int = 1, limit: int = 20, search: str = None, status: str = None, job_id: int = None, trip_id: int = None, transport_type: str = None):
+async def list_lrs(db: AsyncSession, page: int = 1, limit: int = 20, search: str = None, status: str = None, job_id: int = None, trip_id: int = None, transport_type: str = None, created_by: int = None):
     query = select(LR).where(LR.is_deleted == False)
     count_query = select(func.count(LR.id)).where(LR.is_deleted == False)
 
@@ -112,6 +112,10 @@ async def list_lrs(db: AsyncSession, page: int = 1, limit: int = 20, search: str
     if transport_type:
         query = query.where(LR.transport_type == transport_type)
         count_query = count_query.where(LR.transport_type == transport_type)
+
+    if created_by is not None:
+        query = query.where(LR.created_by == created_by)
+        count_query = count_query.where(LR.created_by == created_by)
 
     total = (await db.execute(count_query)).scalar() or 0
     offset = (page - 1) * limit

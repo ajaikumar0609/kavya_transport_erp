@@ -136,6 +136,7 @@ export default function DriverInspectPage() {
           <label className="block text-xs font-medium text-gray-600 mb-1">Current Odometer (km)</label>
           <input
             type="number"
+            min="0"
             value={odometer}
             onChange={e => setOdometer(e.target.value)}
             placeholder="e.g. 145230"

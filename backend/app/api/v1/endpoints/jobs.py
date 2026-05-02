@@ -12,9 +12,11 @@ from app.schemas.base import APIResponse, PaginationMeta
 from app.schemas.job import JobCreate, JobUpdate, JobStatusChange
 from app.services import job_service, trip_service
 from app.services.notification_service import notification_service
+from app.services import email_service
 from app.models.postgres.client import Client
 from app.models.postgres.route import Route
 from app.models.postgres.trip import Trip
+from app.utils.tenant_guard import assert_tenant_access
 
 router = APIRouter()
 
@@ -37,10 +39,14 @@ async def list_jobs(
 
 
 @router.get("/{job_id}", response_model=APIResponse)
-async def get_job(job_id: int, db: AsyncSession = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
+async def get_job(
+    job_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _perm=Depends(require_permission(Permissions.JOB_READ)),
+):
     job = await job_service.get_job(db, job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+    assert_tenant_access(job, current_user, not_found_detail="Job not found")
     data = await job_service.get_job_with_client_name(db, job)
     return APIResponse(success=True, data=data)
 
@@ -99,6 +105,19 @@ async def create_job(
         triggered_by=current_user.user_id,
     )
 
+    # Fire-and-forget email notification to creator (non-blocking)
+    email_service.notify_job_created(
+        db,
+        triggered_by_user_id=current_user.user_id,
+        job_number=job.job_number,
+        origin=job.origin_city or "",
+        destination=job.destination_city or "",
+        client_name="",  # fetched lazily inside template if needed
+        pickup_date=str(job.pickup_date) if getattr(job, "pickup_date", None) else "",
+        material=getattr(job, "material", None) or "",
+        quantity=str(getattr(job, "quantity", None) or ""),
+    )
+
     response_data = {"id": job.id, "job_number": job.job_number}
     if credit_warning:
         response_data["credit_warning"] = credit_warning
@@ -114,6 +133,8 @@ async def update_job(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.JOB_UPDATE)),
 ):
+    existing = await job_service.get_job(db, job_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Job not found")
     job = await job_service.update_job(db, job_id, data.model_dump(exclude_unset=True))
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -126,6 +147,8 @@ async def delete_job(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.JOB_DELETE)),
 ):
+    existing = await job_service.get_job(db, job_id)
+    assert_tenant_access(existing, current_user, not_found_detail="Job not found")
     success = await job_service.delete_job(db, job_id)
     if not success:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -154,9 +177,20 @@ async def change_status(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.JOB_UPDATE)),
 ):
+    existing = await job_service.get_job(db, job_id)
+    old_status = getattr(existing, "status", "") or ""
     job, error = await job_service.change_job_status(db, job_id, data.status, current_user.user_id, data.remarks)
     if error:
         raise HTTPException(status_code=400, detail=error)
+    # Fire-and-forget email notification (non-blocking)
+    email_service.notify_job_status_updated(
+        db,
+        triggered_by_user_id=current_user.user_id,
+        job_number=getattr(job, "job_number", str(job_id)),
+        old_status=str(old_status),
+        new_status=data.status,
+        remarks=data.remarks or "",
+    )
     return APIResponse(success=True, message=f"Job status changed to {data.status}")
 
 

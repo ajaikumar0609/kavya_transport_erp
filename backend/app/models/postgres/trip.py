@@ -205,6 +205,8 @@ class TripExpense(Base, TimestampMixin):
     expense_status = Column(SQLEnum(ExpenseStatusEnum, native_enum=False), default=ExpenseStatusEnum.PENDING)
     paid_by = Column(Integer, ForeignKey('users.id'), nullable=True)
     paid_at = Column(DateTime, nullable=True)
+    payment_proof_url = Column(String(500), nullable=True)
+    payment_proof_s3_key = Column(String(500), nullable=True)
     
     # Biometric verification (required for high-value expenses)
     biometric_verified = Column(Boolean, default=False)

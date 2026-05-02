@@ -1,0 +1,32 @@
+[Unit]
+Description=Kavya Transports Celery Beat (Scheduler)
+After=network.target redis.service
+Wants=redis.service
+# Beat should start AFTER the worker so tasks have a consumer
+After=kavya-celery-worker.service
+
+[Service]
+User=kavya
+Group=kavya
+WorkingDirectory=/var/www/kavya/backend
+EnvironmentFile=/var/www/kavya/backend/.env
+ExecStart=/var/www/kavya/venv/bin/celery -A app.celery_app beat \
+    --loglevel=info \
+    --logfile=/var/log/kavya/celery-beat.log \
+    --pidfile=/var/run/kavya/celery-beat.pid \
+    --schedule=/var/www/kavya/backend/celerybeat-schedule
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Only ONE beat instance should run — guard against duplicate restarts
+KillMode=process
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -93,7 +93,7 @@ class WebSocketService {
   String _getDefaultWsUrl() {
     const apiBase = String.fromEnvironment(
       'API_BASE_URL',
-      defaultValue: 'http://10.0.2.2:8000/api/v1',
+      defaultValue: 'https://api.kavyatransports.com/api/v1',
     );
     
     // Convert http://host/path -> ws://host/ws

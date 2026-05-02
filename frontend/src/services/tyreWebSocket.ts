@@ -1,6 +1,7 @@
 /**
  * Tyre WebSocket Service — Singleton for real-time TPMS data
- * Connects to ws://localhost:8000/ws and subscribes to tyre channels
+ * Connects to the backend WebSocket server at /ws using dynamic host resolution
+ * (respects VITE_API_URL in production, falls back to window.location.host)
  */
 
 type Callback = (data: any) => void;

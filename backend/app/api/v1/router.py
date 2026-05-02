@@ -104,6 +104,7 @@ api_router.include_router(driver_scoring.router, prefix="/driver-scoring", tags=
 # Finance
 api_router.include_router(finance.router, prefix="/finance", tags=["Finance"])
 api_router.include_router(finance_automation.router, prefix="/finance", tags=["Finance Automation"])
+api_router.include_router(invoice_payments.router, prefix="/finance", tags=["Invoice Payment Proof"])
 
 # Finance Manager — salary, advances, expenses, payables, Razorpay payouts
 api_router.include_router(finance_manager.router, prefix="/finance-manager", tags=["Finance Manager"])
@@ -194,7 +195,6 @@ api_router.include_router(receivable_payments.router, tags=["Receivable Payments
 # Company Expenses (field GPay, driver advance, salaries, rent, etc.)
 api_router.include_router(expenses.router, prefix="/expenses", tags=["Company Expenses"])
 api_router.include_router(auditor.router, prefix="/auditor", tags=["Auditor"])
-api_router.include_router(invoice_payments.router, prefix="/finance", tags=["Invoice Payment Proof"])
 
 # IFIAS — Intelligent Freight Invoice Automation
 api_router.include_router(invoice_batches.router, prefix="", tags=["IFIAS Invoice Automation"])

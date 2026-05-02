@@ -23,11 +23,13 @@ async def list_lrs(
     search: Optional[str] = None, status: Optional[str] = None,
     job_id: Optional[int] = None, trip_id: Optional[int] = None,
     transport_type: Optional[str] = None,
+    my_lrs: bool = Query(False, description="When true, return only LRs created by the current user"),
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.LR_READ)),
 ):
-    lrs, total = await lr_service.list_lrs(db, page, limit, search, status, job_id, trip_id, transport_type)
+    created_by = current_user.user_id if my_lrs else None
+    lrs, total = await lr_service.list_lrs(db, page, limit, search, status, job_id, trip_id, transport_type, created_by)
     pages = (total + limit - 1) // limit
     items = []
     for lr in lrs:

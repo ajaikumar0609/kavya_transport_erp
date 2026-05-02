@@ -7,6 +7,22 @@ celery_app = Celery(
     "transport_erp",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
+    include=[
+        "app.tasks.compliance_tasks",
+        "app.tasks.eway_bill_tasks",
+        "app.tasks.fuel_price_tasks",
+        "app.tasks.geofence_tasks",
+        "app.tasks.scoring_tasks",
+        "app.tasks.notification_tasks",
+        "app.tasks.intelligence_tasks",
+        "app.tasks.finance_tasks",
+        "app.tasks.banking_tasks",
+        "app.tasks.ialert_tasks",
+        "app.tasks.ktt_tasks",
+        "app.tasks.pipeline_tasks",
+        "app.tasks.gps_tasks",
+        "app.tasks.ewb_expiry_tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -20,6 +36,23 @@ celery_app.conf.update(
     task_soft_time_limit=240,  # 4 min soft limit
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=100,
+    # ── Task routing — separate queues per domain ─────────────
+    task_routes={
+        "app.tasks.finance_tasks.*":        {"queue": "finance"},
+        "app.tasks.notification_tasks.*":   {"queue": "notifications"},
+        "app.tasks.intelligence_tasks.*":   {"queue": "reports"},
+        "app.tasks.scoring_tasks.*":        {"queue": "reports"},
+        "gps.*":                            {"queue": "celery"},
+        "app.tasks.ialert_tasks.*":         {"queue": "celery"},
+        "app.tasks.ktt_tasks.*":            {"queue": "celery"},
+        # payments queue — highest priority
+        "app.tasks.payment_tasks.*":        {"queue": "payments"},
+    },
+    task_queue_max_priority=10,
+    task_default_priority=5,
+    # ── Default retry policy ─────────────────────────────────
+    task_acks_late=True,
+    task_reject_on_worker_lost=True,
     beat_schedule={
         "check-compliance-daily": {
             "task": "app.tasks.compliance_tasks.check_all_compliance",
@@ -142,6 +175,11 @@ celery_app.conf.update(
         "poll-ialert-gps": {
             "task": "app.tasks.ialert_tasks.poll_ialert_gps",
             "schedule": float(settings.IALERT_POLL_INTERVAL_SECONDS),
+        },
+        # ── KTT GPS Polling (KT Telematic Pull API) ──
+        "poll-ktt-gps": {
+            "task": "app.tasks.ktt_tasks.poll_ktt_gps",
+            "schedule": float(settings.KTT_POLL_INTERVAL_SECONDS),
         },
         # ── Unified GPS Polling (all providers) ──
         "gps-unified-poll": {

@@ -12,13 +12,13 @@ const parseDMY = (val: string): string | undefined => {
 
 import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Search, Plus, Shield, X, Trash2, Mail, Lock, Phone, User, BadgeCheck, Eye, EyeOff, Pencil, Upload, ExternalLink, FileText, Camera, FolderOpen, RefreshCw } from 'lucide-react';
+import { Users, Search, Plus, Shield, X, Trash2, Mail, Lock, Phone, User, BadgeCheck, Eye, EyeOff, Pencil, Upload, ExternalLink, FileText, Camera, FolderOpen } from 'lucide-react';
 import DataTable, { Column } from '@/components/common/DataTable';
 import { KPICard, StatusBadge } from '@/components/common/Modal';
 import { DocAutoFill } from '@/components/documents/DocAutoFill';
 import { documentService } from '@/services/dataService';
 import api from '@/services/api';
-import { safeArray, openDocumentUrl } from '@/utils/helpers';
+import { safeArray } from '@/utils/helpers';
 import { useAuthStore } from '@/store/authStore';
 import toast from 'react-hot-toast';
 
@@ -70,7 +70,6 @@ const ROLE_OPTIONS = [
   { value: 'project_associate', label: 'Project Associate', description: 'Job & trip coordination', color: 'bg-amber-50 border-amber-200 text-amber-700' },
   { value: 'driver', label: 'Driver', description: 'Trip execution & mobile app', color: 'bg-purple-50 border-purple-200 text-purple-700' },
   { value: 'pump_operator', label: 'Pump Operator', description: 'Fuel dispensing & stock management', color: 'bg-orange-50 border-orange-200 text-orange-700' },
-  { value: 'tyre_inspector', label: 'Tyre Inspector', description: 'Tyre lifecycle, inspection & stock', color: 'bg-teal-50 border-teal-200 text-teal-700' },
 ] as const;
 
 // ── Shared helpers (module-level) ────────────────────────────────────────────
@@ -338,7 +337,7 @@ interface DLSectionProps {
   dlNumber: string;
   dlIssueDate: string;
   dlExpiryDate: string;
-  onChange: (patch: { dl_file_url?: string; dl_file_name?: string; dl_number?: string; dl_issue_date?: string; dl_expiry_date?: string }) => void;
+  onChange: (patch: { dl_file_url?: string; dl_file_name?: string; dl_number?: string; dl_issue_date?: string; dl_expiry_date?: string; dl_holder_name?: string }) => void;
 }
 
 function DrivingLicenseSection({ dlFileUrl, dlFileName, dlNumber, dlIssueDate, dlExpiryDate, onChange }: DLSectionProps) {
@@ -365,6 +364,7 @@ function DrivingLicenseSection({ dlFileUrl, dlFileName, dlNumber, dlIssueDate, d
         dl_number: data.license_number || data.dl_number || undefined,
         dl_issue_date: toISODate(data.issue_date || data.doi) || undefined,
         dl_expiry_date: toISODate(data.expiry_date || data.validity || data.valid_till) || undefined,
+        dl_holder_name: data.holder_name || undefined,
       });
       setExtractState('done');
     } catch (err: any) {
@@ -537,102 +537,11 @@ function DrivingLicenseSection({ dlFileUrl, dlFileName, dlNumber, dlIssueDate, d
   );
 }
 
-// ─── Employee Document Upload Card ───────────────────────────────────────────
-const DOC_URL_FIELDS: Record<string, [string, string]> = {
-  aadhaar_card:    ['aadhaar_file_url',  'aadhaar_file_name'],
-  pan_card:        ['pan_file_url',      'pan_file_name'],
-  bank_passbook:   ['passbook_file_url', 'passbook_file_name'],
-  driving_license: ['dl_file_url',       'dl_file_name'],
-};
-
-function EmployeeDocCard({
-  label, docType, fileUrl, fileName, userId, onUploaded,
-}: {
-  label: string;
-  docType: string;
-  fileUrl?: string;
-  fileName?: string;
-  userId: number;
-  onUploaded: (urlField: string, url: string, nameField: string, name: string) => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setError(null);
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('document_type', docType);
-      const res: any = await api.post(`/users/${userId}/documents`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      const [urlField, nameField] = DOC_URL_FIELDS[docType];
-      const data = res?.data ?? res ?? {};
-      onUploaded(urlField, data[urlField] ?? '', nameField, data[nameField] ?? file.name);
-      toast.success(`${label} uploaded`);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Upload failed');
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
-  };
-
-  const isImage = fileUrl && (/\.(jpg|jpeg|png|webp|gif)(?:\?|$)/i.test(fileUrl) || fileUrl.startsWith('data:image/'));
-
-  return (
-    <div className={`rounded-xl border p-4 ${fileUrl ? 'bg-slate-50 border-slate-100' : 'bg-white border-dashed border-slate-200'}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-0.5">{label}</p>
-          {fileUrl && fileName && <p className="text-xs text-slate-700 truncate">{fileName}</p>}
-          {!fileUrl && <p className="text-xs text-slate-400">Not uploaded</p>}
-          {error && <p className="text-xs text-red-500 mt-0.5">{error}</p>}
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {fileUrl && (
-            <button onClick={() => openDocumentUrl(fileUrl)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100">
-              <ExternalLink size={12} /> View
-            </button>
-          )}
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={uploading}
-            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors ${
-              fileUrl
-                ? 'text-amber-700 bg-amber-50 hover:bg-amber-100'
-                : 'text-primary-700 bg-primary-50 hover:bg-primary-100'
-            }`}
-          >
-            {uploading
-              ? <><RefreshCw size={12} className="animate-spin" /> Uploading…</>
-              : fileUrl
-              ? <><RefreshCw size={12} /> Replace</>
-              : <><Upload size={12} /> Upload</>
-            }
-          </button>
-        </div>
-      </div>
-      {fileUrl && isImage && (
-        <img src={fileUrl} alt={label} className="w-full max-h-48 object-contain rounded-lg border border-slate-200 bg-white mt-3" />
-      )}
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function EmployeesPage() {
   const authUser = useAuthStore((s) => s.user);
   const isAdmin = Boolean(authUser?.roles?.includes('admin'));
   const [search, setSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState('All');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -763,7 +672,7 @@ export default function EmployeesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-employees', search],
     queryFn: async () => {
-      const res = await api.get('/users', { params: { search: search || undefined } });
+      const res = await api.get('/users', { params: { search: search || undefined, limit: 500, page: 1 } });
       return res;
     },
   });
@@ -1020,6 +929,26 @@ export default function EmployeesPage() {
         <KPICard title="Inactive" value={employees.filter(e => e.status === 'inactive').length} icon={<Users className="w-5 h-5" />} color="gray" />
       </div>
 
+      {/* Role filter pills */}
+      <div className="flex flex-wrap gap-2">
+        {['All', ...Array.from(new Set(employees.map(e => e.role || 'Unknown'))).sort()].map((role) => {
+          const count = role === 'All' ? employees.length : employees.filter(e => (e.role || 'Unknown') === role).length;
+          return (
+            <button
+              key={role}
+              onClick={() => setRoleFilter(role)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                roleFilter === role
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600'
+              }`}
+            >
+              {role.replace(/_/g, ' ')} <span className={`ml-1 ${roleFilter === role ? 'text-blue-200' : 'text-gray-400'}`}>({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="card">
         <div className="flex items-center gap-4 mb-4">
           <div className="relative flex-1 max-w-md">
@@ -1035,7 +964,7 @@ export default function EmployeesPage() {
         </div>
         <DataTable
           columns={columns}
-          data={employees}
+          data={roleFilter === 'All' ? employees : employees.filter(e => (e.role || '').toLowerCase().replace(/\s+/g, '_') === roleFilter.toLowerCase().replace(/\s+/g, '_'))}
           isLoading={isLoading}
           emptyMessage="No employees found"
           onRowClick={(employee) => setSelectedEmployee(employee)}
@@ -1197,28 +1126,49 @@ export default function EmployeesPage() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Documents</p>
                 {(() => {
                   const emp = selectedEmployee;
-                  const docDefs = [
-                    { label: 'Aadhaar Card', docType: 'aadhaar_card', url: emp.aadhaar_file_url, name: emp.aadhaar_file_name },
-                    { label: 'PAN Card', docType: 'pan_card', url: emp.pan_file_url, name: emp.pan_file_name },
-                    { label: 'Passbook', docType: 'bank_passbook', url: emp.passbook_file_url, name: emp.passbook_file_name },
-                    { label: 'Driving License', docType: 'driving_license', url: emp.dl_file_url, name: emp.dl_file_name },
+                  const docs = [
+                    { label: 'Employee Photo', url: emp.avatar_url, name: undefined, isPhoto: true },
+                    { label: 'Aadhaar Card', url: emp.aadhaar_file_url, name: emp.aadhaar_file_name },
+                    { label: 'PAN Card', url: emp.pan_file_url, name: emp.pan_file_name },
+                    { label: 'Passbook', url: emp.passbook_file_url, name: emp.passbook_file_name },
+                    { label: 'Driving License', url: emp.dl_file_url, name: emp.dl_file_name,
+                      meta: emp.dl_file_url ? [
+                        { key: 'License No.', val: emp.dl_number || '—' },
+                        { key: 'Issue Date', val: emp.dl_issue_date ? new Date(emp.dl_issue_date).toLocaleDateString('en-IN') : '—' },
+                        { key: 'Expiry Date', val: emp.dl_expiry_date ? new Date(emp.dl_expiry_date).toLocaleDateString('en-IN') : '—' },
+                      ] : undefined },
                   ];
+                  const uploaded = docs.filter(d => d.url);
+                  if (!uploaded.length) return <p className="text-sm text-slate-500 py-2">No documents uploaded.</p>;
                   return (
                     <div className="space-y-3">
-                      {docDefs.map((doc) => (
-                        <EmployeeDocCard
-                          key={doc.docType}
-                          label={doc.label}
-                          docType={doc.docType}
-                          fileUrl={doc.url}
-                          fileName={doc.name}
-                          userId={emp.id}
-                          onUploaded={(urlField, url, nameField, name) => {
-                            setSelectedEmployee((prev) =>
-                              prev ? { ...prev, [urlField]: url, [nameField]: name } : prev
-                            );
-                          }}
-                        />
+                      {uploaded.map((doc) => (
+                        <div key={doc.label} className="rounded-xl bg-slate-50 p-4 border border-slate-100">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{doc.label}</p>
+                              {doc.name && <p className="text-sm font-semibold text-slate-900 break-all">{doc.name}</p>}
+                            </div>
+                            <a href={doc.url} target="_blank" rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 shrink-0">
+                              <ExternalLink size={14} /> View File
+                            </a>
+                          </div>
+                          {doc.url!.startsWith('data:image') && (
+                            <img src={doc.url} alt={doc.label}
+                              className={`w-full object-contain rounded-lg border border-slate-200 bg-white mt-3 ${doc.isPhoto ? 'max-h-40 object-top' : 'max-h-64'}`} />
+                          )}
+                          {doc.meta && (
+                            <div className="grid grid-cols-3 gap-3 mt-3">
+                              {doc.meta.map(m => (
+                                <div key={m.key} className="rounded-lg bg-white p-3 border border-slate-100">
+                                  <p className="text-xs uppercase tracking-wide text-slate-500 mb-1">{m.key}</p>
+                                  <p className="text-sm font-semibold text-slate-900">{m.val}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       ))}
                     </div>
                   );
@@ -1248,42 +1198,46 @@ export default function EmployeesPage() {
 
       {/* Edit Employee Modal */}
       {isEditOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
-            <div className="relative bg-gradient-to-r from-emerald-600 to-teal-700 px-6 py-5 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[94vh]">
+
+            {/* Modal Header */}
+            <div className="relative bg-gradient-to-r from-emerald-600 to-teal-700 px-7 py-5 shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
                   <Pencil className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-white">Edit Employee</h2>
-                  <p className="text-emerald-100 text-sm">Update profile, role and status</p>
+                  <h2 className="text-lg font-bold text-white leading-tight">Edit Employee</h2>
+                  <p className="text-emerald-100 text-sm mt-0.5">Update profile, role and status</p>
                 </div>
               </div>
               <button
                 onClick={() => { setIsEditOpen(false); setShowEditPassword(false); }}
-                className="absolute top-4 right-4 p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+                className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-lg transition-colors"
               >
                 <X size={18} className="text-white" />
               </button>
             </div>
 
             <form
-              className="overflow-y-auto flex-1 px-6 py-5 space-y-5"
+              className="overflow-y-auto flex-1 px-7 py-6 space-y-7"
               onSubmit={(e) => { e.preventDefault(); editMutation.mutate(); }}
             >
-              {/* Avatar */}
-              <div className="flex items-center gap-4">
+              {/* Profile Photo */}
+              <div className="flex items-center gap-5 p-4 bg-gray-50 rounded-xl border border-gray-100">
                 {editForm.avatar_url ? (
-                  <img src={editForm.avatar_url} alt="Avatar" className="w-14 h-14 rounded-full object-cover border border-gray-200" />
+                  <img src={editForm.avatar_url} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-emerald-200 shrink-0" />
                 ) : (
-                  <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-semibold text-lg">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xl shrink-0">
                     {(editForm.first_name || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Profile Photo</label>
-                  <input type="file" accept="image/*" className="input w-full"
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-800 mb-1">Profile Photo</p>
+                  <p className="text-xs text-gray-400 mb-2">JPG or PNG, will be shown as avatar</p>
+                  <input type="file" accept="image/*"
+                    className="block w-full text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 cursor-pointer"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
@@ -1293,48 +1247,59 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
+              {/* Section helper */}
+              {(() => {
+                const Section = ({ title }: { title: string }) => (
+                  <div className="flex items-center gap-3 mb-5">
+                    <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">{title}</span>
+                    <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
+                  </div>
+                );
+                return null; // defined inline below
+              })()}
+
               {/* Personal Information */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Personal Information</span>
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Personal Information</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-2 gap-5 mb-5">
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">First Name <span className="text-red-500">*</span></label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">First Name <span className="text-red-500">*</span></label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <input className="input w-full pl-9 text-sm" value={editForm.first_name}
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input className="input w-full pl-10 py-2.5 text-sm" value={editForm.first_name}
                         onChange={(e) => setEditForm((p) => ({ ...p, first_name: e.target.value }))} required />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Last Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <input className="input w-full pl-9 text-sm" value={editForm.last_name}
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input className="input w-full pl-10 py-2.5 text-sm" value={editForm.last_name}
                         onChange={(e) => setEditForm((p) => ({ ...p, last_name: e.target.value }))} />
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-2 gap-5 mb-5">
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Date of Birth</label>
-                    <input type="date" className="input w-full text-sm" value={editForm.date_of_birth}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                    <input type="date" className="input w-full py-2.5 text-sm" value={editForm.date_of_birth}
                       onChange={(e) => setEditForm((p) => ({ ...p, date_of_birth: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Date of Joining</label>
-                    <input type="date" className="input w-full text-sm" value={editForm.joining_date}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Date of Joining</label>
+                    <input type="date" className="input w-full py-2.5 text-sm" value={editForm.joining_date}
                       onChange={(e) => setEditForm((p) => ({ ...p, joining_date: e.target.value }))} />
                   </div>
                 </div>
-                <div className="mb-4">
-                  <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Gender</label>
-                  <div className="flex gap-2">
+                <div className="mb-5">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+                  <div className="flex gap-3">
                     {['male', 'female', 'other'].map((g) => (
                       <button key={g} type="button"
-                        className={`flex-1 py-2 rounded-lg border-2 text-sm font-medium capitalize transition-all ${editForm.gender === g ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500 hover:border-emerald-300'}`}
+                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium capitalize transition-all ${editForm.gender === g ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-200 text-gray-500 hover:border-emerald-300 hover:text-emerald-600'}`}
                         onClick={() => setEditForm((p) => ({ ...p, gender: g }))}>
                         {g === 'male' ? '♂ Male' : g === 'female' ? '♀ Female' : '⚧ Other'}
                       </button>
@@ -1342,8 +1307,8 @@ export default function EmployeesPage() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Address</label>
-                  <textarea className="input w-full text-sm resize-none" rows={2} placeholder="Street, City, State, PIN"
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Address</label>
+                  <textarea className="input w-full py-2.5 text-sm resize-none" rows={2} placeholder="Street, City, State, PIN"
                     value={editForm.address}
                     onChange={(e) => setEditForm((p) => ({ ...p, address: e.target.value }))} />
                 </div>
@@ -1351,36 +1316,34 @@ export default function EmployeesPage() {
 
               {/* Contact Details */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Contact Details</span>
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Contact Details</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="col-span-2">
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <input type="tel" className="input w-full pl-9 text-sm" placeholder="9876543210"
-                        value={editForm.phone}
-                        onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} />
-                    </div>
+                <div className="mb-5">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input type="tel" className="input w-full pl-10 py-2.5 text-sm" placeholder="9876543210"
+                      value={editForm.phone}
+                      onChange={(e) => setEditForm((p) => ({ ...p, phone: e.target.value }))} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Emergency Contact Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Contact Name</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <input className="input w-full pl-9 text-sm" placeholder="Contact person name"
+                      <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input className="input w-full pl-10 py-2.5 text-sm" placeholder="Contact person name"
                         value={editForm.emergency_contact_name}
                         onChange={(e) => setEditForm((p) => ({ ...p, emergency_contact_name: e.target.value }))} />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Emergency Contact Phone</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Emergency Contact Phone</label>
                     <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-                      <input type="tel" className="input w-full pl-9 text-sm" placeholder="9876543210"
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input type="tel" className="input w-full pl-10 py-2.5 text-sm" placeholder="9876543210"
                         value={editForm.emergency_contact_phone}
                         onChange={(e) => setEditForm((p) => ({ ...p, emergency_contact_phone: e.target.value }))} />
                     </div>
@@ -1390,14 +1353,14 @@ export default function EmployeesPage() {
 
               {/* Role & Status */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Role & Status</span>
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Role & Status</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Role</label>
-                    <select className="input w-full text-sm" value={editForm.role_name}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                    <select className="input w-full py-2.5 text-sm" value={editForm.role_name}
                       onChange={(e) => setEditForm((p) => ({ ...p, role_name: e.target.value }))}>
                       {ROLE_OPTIONS.map((role) => (
                         <option key={role.value} value={role.value}>{role.label}</option>
@@ -1405,8 +1368,8 @@ export default function EmployeesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Status</label>
-                    <select className="input w-full text-sm"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                    <select className="input w-full py-2.5 text-sm"
                       value={editForm.is_active ? 'active' : 'inactive'}
                       onChange={(e) => setEditForm((p) => ({ ...p, is_active: e.target.value === 'active' }))}>
                       <option value="active">Active</option>
@@ -1418,38 +1381,38 @@ export default function EmployeesPage() {
 
               {/* Bank Details */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Bank Details</span>
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Bank Details</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Account Holder Name</label>
-                    <input className="input w-full" placeholder="Full name on bank account"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Holder Name</label>
+                    <input className="input w-full py-2.5 text-sm" placeholder="Full name on bank account"
                       value={editForm.bank_account_holder}
                       onChange={(e) => setEditForm((p) => ({ ...p, bank_account_holder: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Bank Name</label>
-                    <input className="input w-full" placeholder="e.g. SBI, HDFC, ICICI"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
+                    <input className="input w-full py-2.5 text-sm" placeholder="e.g. SBI, HDFC, ICICI"
                       value={editForm.bank_name}
                       onChange={(e) => setEditForm((p) => ({ ...p, bank_name: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Account Number</label>
-                    <input className="input w-full" placeholder="Account number"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Number</label>
+                    <input className="input w-full py-2.5 text-sm" placeholder="Account number"
                       value={editForm.account_number}
                       onChange={(e) => setEditForm((p) => ({ ...p, account_number: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">IFSC Code</label>
-                    <input className="input w-full" placeholder="e.g. SBIN0001234"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
+                    <input className="input w-full py-2.5 text-sm uppercase" placeholder="e.g. SBIN0001234"
                       value={editForm.ifsc_code}
                       onChange={(e) => setEditForm((p) => ({ ...p, ifsc_code: e.target.value.toUpperCase() }))} />
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Account Type</label>
-                    <select className="input w-full"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
+                    <select className="input w-full py-2.5 text-sm"
                       value={editForm.account_type}
                       onChange={(e) => setEditForm((p) => ({ ...p, account_type: e.target.value }))}>
                       <option value="">Select type</option>
@@ -1458,8 +1421,8 @@ export default function EmployeesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">UPI ID</label>
-                    <input className="input w-full" placeholder="e.g. name@upi"
+                    <label className="block text-sm font-medium text-gray-700 mb-2">UPI ID</label>
+                    <input className="input w-full py-2.5 text-sm" placeholder="e.g. name@upi"
                       value={editForm.upi_id}
                       onChange={(e) => setEditForm((p) => ({ ...p, upi_id: e.target.value }))} />
                   </div>
@@ -1468,59 +1431,45 @@ export default function EmployeesPage() {
 
               {/* Aadhaar File */}
               <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Aadhaar File</span>
+                <div className="flex items-center gap-3 mb-5">
+                  <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Aadhaar File</span>
                   <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                 </div>
                 <div className="space-y-3">
                   {editForm.aadhaar_file_url && (
-                    <a
-                      href={editForm.aadhaar_file_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100"
-                    >
-                      <ExternalLink size={14} />
+                    <a href={editForm.aadhaar_file_url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100">
+                      <ExternalLink size={13} />
                       {editForm.aadhaar_file_name || 'View existing Aadhaar file'}
                     </a>
                   )}
-                  <label className="w-full flex items-center justify-between gap-3 border border-emerald-200 bg-emerald-50/40 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-emerald-50 transition-colors">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Upload className="w-4 h-4 text-emerald-600" />
-                      <span className="text-sm text-gray-700 truncate">{editForm.aadhaar_file_name || 'Choose Aadhaar file (image or PDF)'}</span>
+                  <label className="w-full flex items-center justify-between gap-3 border-2 border-dashed border-emerald-200 bg-emerald-50/30 rounded-xl px-4 py-3 cursor-pointer hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Upload className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span className="text-sm text-gray-600 truncate">{editForm.aadhaar_file_name || 'Choose Aadhaar file (image or PDF)'}</span>
                     </div>
-                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">Browse</span>
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      className="hidden"
+                    <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md whitespace-nowrap">Browse</span>
+                    <input type="file" accept="image/*,application/pdf" className="hidden"
                       onChange={async (e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
                         try {
                           const dataUrl = await fileToDataUrl(file);
-                          setEditForm((p) => ({
-                            ...p,
-                            aadhaar_file_url: dataUrl,
-                            aadhaar_file_name: file.name,
-                          }));
-                        } catch {
-                          toast.error('Failed to read Aadhaar file');
-                        }
-                      }}
-                    />
+                          setEditForm((p) => ({ ...p, aadhaar_file_url: dataUrl, aadhaar_file_name: file.name }));
+                        } catch { toast.error('Failed to read Aadhaar file'); }
+                      }} />
                   </label>
                 </div>
               </div>
 
-              {/* Driving License (shown when driver role) */}
+              {/* Driving License (driver only) */}
               {editForm.role_name === 'driver' && (
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Driving License</span>
+                  <div className="flex items-center gap-3 mb-5">
+                    <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Driving License</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                   </div>
-                  <div className="mb-3">
+                  <div className="mb-4">
                     <DocAutoFill
                       documentType="driving_license"
                       entityType="driver"
@@ -1533,66 +1482,57 @@ export default function EmployeesPage() {
                             dl_issue_date: toISODate(data.issue_date || data.doi) || p.dl_issue_date,
                             dl_expiry_date: toISODate(data.expiry_date || data.validity || data.valid_till) || p.dl_expiry_date,
                           };
+                          if (data.holder_name && !p.first_name) {
+                            const parts = data.holder_name.trim().split(/\s+/);
+                            patch.first_name = parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0];
+                            patch.last_name = parts.length > 1 ? parts[parts.length - 1] : '';
+                          }
                           return patch;
                         });
                       }}
                     />
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-3 mb-4">
                     {editForm.dl_file_url && (
-                      <a
-                        href={editForm.dl_file_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100"
-                      >
-                        <ExternalLink size={14} />
+                      <a href={editForm.dl_file_url} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100">
+                        <ExternalLink size={13} />
                         {editForm.dl_file_name || 'View existing DL file'}
                       </a>
                     )}
-                    <label className="w-full flex items-center justify-between gap-3 border border-emerald-200 bg-emerald-50/40 rounded-xl px-3 py-2.5 cursor-pointer hover:bg-emerald-50 transition-colors">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileText className="w-4 h-4 text-emerald-600" />
-                        <span className="text-sm text-gray-700 truncate">{editForm.dl_file_name || 'Choose DL file (image or PDF)'}</span>
+                    <label className="w-full flex items-center justify-between gap-3 border-2 border-dashed border-emerald-200 bg-emerald-50/30 rounded-xl px-4 py-3 cursor-pointer hover:bg-emerald-50 hover:border-emerald-300 transition-colors">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <FileText className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="text-sm text-gray-600 truncate">{editForm.dl_file_name || 'Choose DL file (image or PDF)'}</span>
                       </div>
-                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">Browse</span>
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        className="hidden"
+                      <span className="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-md whitespace-nowrap">Browse</span>
+                      <input type="file" accept="image/*,application/pdf" className="hidden"
                         onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (!file) return;
                           try {
                             const dataUrl = await fileToDataUrl(file);
-                            setEditForm((p) => ({
-                              ...p,
-                              dl_file_url: dataUrl,
-                              dl_file_name: file.name,
-                            }));
-                          } catch {
-                            toast.error('Failed to read DL file');
-                          }
-                        }}
-                      />
+                            setEditForm((p) => ({ ...p, dl_file_url: dataUrl, dl_file_name: file.name }));
+                          } catch { toast.error('Failed to read DL file'); }
+                        }} />
                     </label>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 mt-3">
+                  <div className="grid grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">License Number</label>
-                      <input className="input w-full text-sm uppercase" placeholder="e.g. KA0120200012345"
+                      <label className="block text-sm font-medium text-gray-700 mb-2">License Number</label>
+                      <input className="input w-full py-2.5 text-sm uppercase" placeholder="KA0120200012345"
                         value={editForm.dl_number}
                         onChange={(e) => setEditForm((p) => ({ ...p, dl_number: e.target.value.toUpperCase() }))} />
                     </div>
                     <div>
-                      <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Issue Date</label>
-                      <input type="date" className="input w-full text-sm"
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Issue Date</label>
+                      <input type="date" className="input w-full py-2.5 text-sm"
                         value={editForm.dl_issue_date}
                         onChange={(e) => setEditForm((p) => ({ ...p, dl_issue_date: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Expiry Date</label>
-                      <input type="date" className="input w-full text-sm"
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Expiry Date</label>
+                      <input type="date" className="input w-full py-2.5 text-sm"
                         value={editForm.dl_expiry_date}
                         onChange={(e) => setEditForm((p) => ({ ...p, dl_expiry_date: e.target.value }))} />
                     </div>
@@ -1603,40 +1543,43 @@ export default function EmployeesPage() {
               {/* Account Security */}
               {isAdmin && (
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-[10px] font-bold tracking-widest uppercase text-emerald-600">Account Security</span>
+                  <div className="flex items-center gap-3 mb-5">
+                    <span className="text-xs font-bold tracking-widest uppercase text-emerald-600 whitespace-nowrap">Account Security</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-emerald-200 to-transparent" />
                   </div>
-                  <label className="block text-[12.5px] font-medium text-gray-700 mb-1.5">Reset Password (Admin only)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Reset Password <span className="text-xs font-normal text-gray-400">(Admin only — leave empty to keep current)</span></label>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input type={showEditPassword ? 'text' : 'password'}
-                      className="input w-full pl-10 pr-10"
-                      placeholder="Leave empty to keep current password"
+                      className="input w-full pl-10 pr-11 py-2.5 text-sm"
+                      placeholder="Min 6 characters"
                       value={editForm.password}
                       onChange={(e) => setEditForm((p) => ({ ...p, password: e.target.value }))}
                       minLength={6} />
-                    <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    <button type="button" className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                       onClick={() => setShowEditPassword(!showEditPassword)} tabIndex={-1}>
                       {showEditPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
                   {editForm.password && editForm.password.length < 6 && (
-                    <p className="text-xs text-amber-600 mt-1">Password must be at least 6 characters</p>
+                    <p className="text-xs text-amber-600 mt-1.5 flex items-center gap-1">⚠ Password must be at least 6 characters</p>
                   )}
                 </div>
               )}
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              {/* Footer Actions */}
+              <div className="flex justify-end gap-3 pt-5 border-t border-gray-100 sticky bottom-0 bg-white pb-1">
                 <button type="button"
-                  className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  className="px-5 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
                   onClick={() => { setIsEditOpen(false); setShowEditPassword(false); }}>
                   Cancel
                 </button>
                 <button type="submit"
-                  className="px-5 py-2.5 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
+                  className="px-6 py-2.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl transition-colors flex items-center gap-2 shadow-sm"
                   disabled={editMutation.isPending || !editForm.first_name || (!!editForm.password && editForm.password.length < 6)}>
-                  {editMutation.isPending ? 'Saving...' : 'Save Changes'}
+                  {editMutation.isPending ? (
+                    <><span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Saving…</>
+                  ) : 'Save Changes'}
                 </button>
               </div>
             </form>
@@ -1830,7 +1773,15 @@ export default function EmployeesPage() {
                             dlNumber={createForm.dl_number}
                             dlIssueDate={createForm.dl_issue_date}
                             dlExpiryDate={createForm.dl_expiry_date}
-                            onChange={(patch) => setCreateForm((p) => ({ ...p, ...patch }))}
+                            onChange={(patch) => setCreateForm((p) => {
+                              const update: typeof p = { ...p, ...patch };
+                              if (patch.dl_holder_name) {
+                                const parts = patch.dl_holder_name.trim().split(/\s+/);
+                                update.first_name = p.first_name || (parts.length > 1 ? parts.slice(0, -1).join(' ') : parts[0]);
+                                update.last_name = p.last_name || (parts.length > 1 ? parts[parts.length - 1] : '');
+                              }
+                              return update;
+                            })}
                           />
                         </div>
                       )}

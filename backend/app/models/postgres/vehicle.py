@@ -2,7 +2,7 @@
 # Transport ERP - PostgreSQL
 
 from sqlalchemy import (
-    Column, String, Integer, Boolean, ForeignKey, 
+    Column, String, Integer, Boolean, Float, ForeignKey,
     DateTime, Text, Numeric, Date, Enum as SQLEnum
 )
 from sqlalchemy.orm import relationship
@@ -86,6 +86,8 @@ class Vehicle(Base, TimestampMixin, SoftDeleteMixin):
     gps_provider = Column(String(50), nullable=True)
     gps_provider_status = Column(String(20), nullable=True)  # active/pending/error/disabled
     last_gps_at = Column(DateTime(timezone=True), nullable=True)
+    last_speed = Column(Float, nullable=True)          # km/h from GPS provider
+    last_ignition_on = Column(Boolean, nullable=True)  # ignition state from GPS provider
     
     # Fitness & Permits
     fitness_valid_until = Column(Date, nullable=True)

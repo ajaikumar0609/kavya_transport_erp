@@ -1,5 +1,6 @@
 # Event consumer handlers — subscribe to event bus events
-# and route to appropriate notification channels (FCM, WebSocket, in-app).
+# and route to appropriate notification channels (WebSocket, in-app).
+# Push notifications (FCM/Firebase) have been removed.
 
 import logging
 from app.services.event_bus import event_bus, EventTypes
@@ -57,9 +58,9 @@ async def handle_sos_triggered(event: dict, db=None):
                 urgency="critical",
             )
         except Exception as e:
-            logger.error(f"[SOS] FCM notification failed: {e}")
+            logger.error(f"[SOS] notification failed: {e}")
     else:
-        logger.warning("[SOS] No DB session available for SOS FCM notification")
+        logger.warning("[SOS] No DB session available for SOS notification")
 
     await _broadcast_ws("sos_alert", event)
 

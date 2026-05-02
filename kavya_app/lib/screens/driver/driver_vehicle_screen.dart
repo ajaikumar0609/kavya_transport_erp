@@ -284,13 +284,11 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
 
   List<Widget> _buildDocumentCards() {
     // Show all 4 expected types, marking missing ones
-    // Normalize backend type names (rc→rc_book, puc→pollution_certificate, fitness→fitness_certificate)
     final docMap = <String, Map<String, dynamic>>{};
     for (final d in _documents) {
       if (d is Map<String, dynamic>) {
-        final rawType = (d['document_type'] as String? ?? '').toLowerCase().trim();
-        final normType = _normalizeVehicleDocType(rawType);
-        docMap[normType] = d;
+        final type = d['document_type'] as String?;
+        if (type != null) docMap[type] = d;
       }
     }
 
@@ -300,17 +298,6 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
       final doc = docMap[type];
       return _buildSingleDocCard(meta, doc);
     }).toList();
-  }
-
-  String _normalizeVehicleDocType(String type) {
-    switch (type) {
-      case 'rc': return 'rc_book';
-      case 'puc': return 'pollution_certificate';
-      case 'pollution': return 'pollution_certificate';
-      case 'fitness': return 'fitness_certificate';
-      case 'permit': return 'permit';
-      default: return type;
-    }
   }
 
   Widget _buildSingleDocCard(_DocDisplay meta, Map<String, dynamic>? doc) {

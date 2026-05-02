@@ -24,7 +24,9 @@ const resolveRole = (rawRole?: string): HeaderNavRole => {
   if (normalized === 'PROJECT_ASSOCIATE' || normalized === 'PROJECT_ASSOCIATES') return 'PROJECT_ASSOCIATES';
   if (normalized === 'DRIVER') return 'DRIVER';
   if (normalized === 'PUMP_OPERATOR') return 'PUMP_OPERATOR';
+  if (normalized === 'AUDITOR') return 'AUDITOR';
   if (normalized === 'TYRE_INSPECTOR') return 'TYRE_INSPECTOR';
+  if (normalized === 'CLERK') return 'CLERK';
   return 'ADMIN';
 };
 
@@ -121,9 +123,11 @@ export default function Sidebar() {
   const { sidebarCollapsed, toggleSidebarCollapse } = useAppStore();
   const { alertCount } = useFinanceAlertStore();
 
-  // Pending driver approvals count (leave + advance)
+  // Pending driver approvals count (leave + advance) — only for roles with access
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   useEffect(() => {
+    const role = resolveRole((user as any)?.role || user?.roles?.[0]);
+    if (role !== 'ADMIN' && role !== 'FLEET_MANAGER') return;
     let cancelled = false;
     const load = async () => {
       try {
@@ -141,6 +145,7 @@ export default function Sidebar() {
     const interval = setInterval(load, 30_000);
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
+
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const userRole = resolveRole((user as any)?.role || user?.roles?.[0]);

@@ -38,14 +38,18 @@ export default function DashboardPage() {
 
   const isAdmin = hasRole('admin');
 
-  if (hasRole('project_associate')) return <ProjectAssociateDashboard />;
-  if (hasRole('driver')) return <DriverDashboardPage />;
-  if (hasRole('fleet_manager')) return <FleetDashboardPage />;
-  if (hasRole('manager')) return <ManagerDashboardPage />;
-  if (hasRole('finance_manager')) return <Navigate to="/fm/dashboard" replace />;
-  if (hasRole('accountant')) return <Navigate to="/accountant/dashboard" replace />;
-  if (hasRole('tyre_inspector')) return <Navigate to="/fleet/tyres" replace />;
-  if (hasRole('pump_operator')) return <Navigate to="/pump/dashboard" replace />;
+  // Use the primary role (first in array) so multi-role users get a consistent dashboard
+  const primaryRole = user?.roles?.[0];
+  if (primaryRole === 'project_associate') return <ProjectAssociateDashboard />;
+  if (primaryRole === 'driver') return <DriverDashboardPage />;
+  if (primaryRole === 'fleet_manager') return <FleetDashboardPage />;
+  if (primaryRole === 'manager') return <ManagerDashboardPage />;
+  if (primaryRole === 'finance_manager') return <Navigate to="/fm/dashboard" replace />;
+  if (primaryRole === 'accountant') return <Navigate to="/accountant/dashboard" replace />;
+  if (primaryRole === 'tyre_inspector') return <Navigate to="/fleet/tyres" replace />;
+  if (primaryRole === 'pump_operator') return <Navigate to="/pump/dashboard" replace />;
+  if (primaryRole === 'auditor') return <Navigate to="/auditor/dashboard" replace />;
+  if (primaryRole === 'clerk') return <Navigate to="/clerk/dashboard" replace />;
 
   // ── Data Queries ────────────────────────────────────────────────
   const { data: overview, refetch } = useQuery({

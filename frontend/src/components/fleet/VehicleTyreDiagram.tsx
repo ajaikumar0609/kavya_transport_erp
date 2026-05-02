@@ -265,9 +265,7 @@ const TyreRect = memo(function TyreRect({
   const temp = tyre?.temperature;
   const isCritical = tyre &&
     (tyre.alert === 'critical_pressure' ||
-     condition === 'damaged' ||
-     (condition === 'worn' && (treadMm == null || treadMm <= 5)) ||
-     (tyre.life_percent ?? 100) < 20 ||
+     condition === 'damaged' || condition === 'worn' || (tyre.life_percent ?? 100) < 20 ||
      (treadMm != null && treadMm <= 2.5));
 
   return (

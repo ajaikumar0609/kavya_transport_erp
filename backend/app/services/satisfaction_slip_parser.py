@@ -162,33 +162,6 @@ def _extract_qty_values(text: str):
 
 
 # ---------------------------------------------------------------------------
-# PDF LR Validation (PART 3 — STRICT LR MATCH)
-# ---------------------------------------------------------------------------
-
-def pdf_contains_lr(pdf_path: str, lr_number: str) -> bool:
-    """
-    Validate that a PDF's first page text contains the expected LR number.
-    Strips spaces and compares uppercase — handles formatting variations.
-
-    RULE 5: PDF must contain SAME LR number. If not → skip / flag.
-    """
-    try:
-        import pdfplumber
-        with pdfplumber.open(pdf_path) as pdf:
-            text = pdf.pages[0].extract_text() or ""
-        normalized_pdf = text.replace(" ", "").upper()
-        normalized_lr = lr_number.replace(" ", "").upper()
-        result = normalized_lr in normalized_pdf
-        logger.info(
-            f"pdf_contains_lr: lr={lr_number} found={result} pdf={pdf_path}"
-        )
-        return result
-    except Exception as exc:
-        logger.error(f"pdf_contains_lr error for {pdf_path}: {exc}")
-        return False
-
-
-# ---------------------------------------------------------------------------
 # Main parser class
 # ---------------------------------------------------------------------------
 

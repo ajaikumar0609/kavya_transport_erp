@@ -120,7 +120,7 @@ class _State extends ConsumerState<FleetDriverAttendanceHistoryScreen> {
   String _fmtTime(String? iso) {
     if (iso == null) return '—';
     try {
-      final dt = DateTime.parse(iso);
+      final dt = DateTime.parse(iso).toLocal();
       final h = dt.hour;
       final m = dt.minute.toString().padLeft(2, '0');
       final period = h >= 12 ? 'PM' : 'AM';

@@ -16,10 +16,10 @@ export default function CustomerLoginPage() {
     setLoading(true);
     try {
       const result = await customerPortalService.login(email.trim());
-      localStorage.setItem('portal_token', result.access_token);
-      localStorage.setItem('portal_role', 'customer');
-      localStorage.setItem('portal_name', result.name || '');
-      localStorage.setItem('access_token', result.access_token);
+      sessionStorage.setItem('portal_token', result.access_token);
+      sessionStorage.setItem('portal_role', 'customer');
+      sessionStorage.setItem('portal_name', result.name || '');
+      sessionStorage.setItem('access_token', result.access_token);
       navigate('/portal/customer/dashboard');
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Login failed. Please check your email.');

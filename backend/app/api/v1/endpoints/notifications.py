@@ -1,20 +1,14 @@
-# Notification Endpoints — FCM, SMS, WhatsApp
+# Notification Endpoints — SMS, WhatsApp
+# Push notifications (FCM/Firebase) have been removed.
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.core.security import TokenData, get_current_user
 from app.schemas.base import APIResponse
 from app.middleware.permissions import require_permission, Permissions
-from app.services import fcm_service, sms_service, whatsapp_service
+from app.services import sms_service, whatsapp_service
 
 router = APIRouter()
-
-
-class PushNotificationRequest(BaseModel):
-    device_token: str
-    title: str
-    body: str
-    data: dict | None = None
 
 
 class SMSRequest(BaseModel):
@@ -31,34 +25,6 @@ class WhatsAppTemplateRequest(BaseModel):
     phone: str
     template_id: str
     params: list[str] = []
-
-
-@router.post("/push", response_model=APIResponse)
-async def send_push(
-    payload: PushNotificationRequest,
-    current_user: TokenData = Depends(get_current_user),
-    _perm=Depends(require_permission(Permissions.ALERT_MANAGE)),
-):
-    """Send FCM push notification to a device."""
-    result = await fcm_service.send_push_notification(
-        device_token=payload.device_token,
-        title=payload.title,
-        body=payload.body,
-        data=payload.data,
-    )
-    return APIResponse(success=True, data=result, message="Push notification sent")
-
-
-@router.post("/push/topic", response_model=APIResponse)
-async def send_push_topic(
-    topic: str,
-    title: str,
-    body: str,
-    current_user: TokenData = Depends(get_current_user),
-    _perm=Depends(require_permission(Permissions.ALERT_MANAGE)),
-):
-    result = await fcm_service.send_push_to_topic(topic, title, body)
-    return APIResponse(success=True, data=result, message="Topic notification sent")
 
 
 @router.post("/sms", response_model=APIResponse)

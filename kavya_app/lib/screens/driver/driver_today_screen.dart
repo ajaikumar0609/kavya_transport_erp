@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -37,8 +36,6 @@ class DriverTodayScreen extends ConsumerStatefulWidget {
 class _DriverTodayScreenState extends ConsumerState<DriverTodayScreen> {
   final Set<int> _loadingTripIds = {};
   S get s => ref.read(sProvider);
-  Timer? _clockTimer;
-  DateTime _now = DateTime.now();
 
   @override
   void initState() {
@@ -47,16 +44,6 @@ class _DriverTodayScreenState extends ConsumerState<DriverTodayScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(driverMyTripsProvider.notifier).refresh();
     });
-    // Live clock — update every second
-    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
-  }
-
-  @override
-  void dispose() {
-    _clockTimer?.cancel();
-    super.dispose();
   }
 
   Future<void> _submitLRAndEway(Trip trip) async {
@@ -560,7 +547,7 @@ class _DriverTodayScreenState extends ConsumerState<DriverTodayScreen> {
 
   Widget _attendanceCard(BuildContext context, WidgetRef ref, Attendance? attendance) {
     final isCheckedIn = attendance?.checkInTime != null;
-    final now = _now; // uses live clock
+    final now = DateTime.now();
     final dateLabel =
         '${now.day} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][now.month - 1]} ${now.year}';
 
@@ -568,7 +555,7 @@ class _DriverTodayScreenState extends ConsumerState<DriverTodayScreen> {
     String checkInDisplay = '--:--';
     if (attendance?.checkInTime != null) {
       try {
-        final dt = DateTime.parse(attendance!.checkInTime!);
+        final dt = DateTime.parse(attendance!.checkInTime!).toLocal();
         final hh = dt.hour.toString().padLeft(2, '0');
         final mm = dt.minute.toString().padLeft(2, '0');
         checkInDisplay = '$hh:$mm';
@@ -691,20 +678,8 @@ class _DriverTodayScreenState extends ConsumerState<DriverTodayScreen> {
             const Divider(color: KTColors.borderColor, height: 1),
             const SizedBox(height: 16),
 
-            // Live current time
-            Row(
-              children: [
-                Icon(Icons.access_time_rounded, size: 14, color: KTColors.textMuted),
-                const SizedBox(width: 6),
-                Text(
-                  'Current time: ${_now.hour.toString().padLeft(2, '0')}:${_now.minute.toString().padLeft(2, '0')}:${_now.second.toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 11.5, color: KTColors.textMuted),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            if (isCheckedIn) ...[
+            if (isCheckedIn) ...
+              [
                 // Check-in details row
                 Row(
                   children: [

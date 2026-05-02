@@ -5,7 +5,7 @@ import DataTable, { Column } from '@/components/common/DataTable';
 import api from '@/services/api';
 import { safeArray } from '@/utils/helpers';
 import toast from 'react-hot-toast';
-import { Camera, CheckCircle2, Clock } from 'lucide-react';
+import { Camera, CheckCircle2 } from 'lucide-react';
 
 interface AttendanceRow {
   id: number;
@@ -17,15 +17,6 @@ interface AttendanceRow {
   check_in_photo_url?: string;
 }
 
-function useLiveClock() {
-  const [now, setNow] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return now;
-}
-
 export default function DriverAttendancePage() {
   const [page, setPage] = useState(1);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -34,12 +25,10 @@ export default function DriverAttendancePage() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const qc = useQueryClient();
-  const liveNow = useLiveClock();
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['driver-attendance', page],
     queryFn: async () => api.get('/attendance', { params: { page, limit: 20 } }),
-    refetchInterval: 30000, // auto-refresh every 30 seconds
   });
 
   const rows = safeArray<AttendanceRow>((data as any)?.data?.items ?? (data as any)?.items ?? data);
@@ -143,13 +132,7 @@ export default function DriverAttendancePage() {
           <h1 className="page-title">Attendance</h1>
           <p className="page-subtitle">Camera check-in required before 08:30 AM (late after cutoff)</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm font-mono">
-            <Clock size={14} />
-            {liveNow.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-          </div>
-          <Link to="/dashboard" className="btn-secondary">Back</Link>
-        </div>
+        <Link to="/dashboard" className="btn-secondary">Back</Link>
       </div>
 
       <div className="card space-y-4">

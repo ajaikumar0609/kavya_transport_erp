@@ -82,3 +82,6 @@ torch>=2.2.0
 transformers>=4.44.0
 sentencepiece>=0.2.0
 python-pptx>=1.0.2
+
+# File upload security (true MIME detection from magic bytes)
+python-magic==0.4.27

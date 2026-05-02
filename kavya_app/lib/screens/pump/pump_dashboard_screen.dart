@@ -230,7 +230,7 @@ class _PumpDashboardScreenState extends ConsumerState<PumpDashboardScreen> {
     String checkInDisplay = '--:--';
     if (att?.checkInTime != null) {
       try {
-        final dt = DateTime.parse(att!.checkInTime!);
+        final dt = DateTime.parse(att!.checkInTime!).toLocal();
         checkInDisplay = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
       } catch (_) {
         checkInDisplay = att!.checkInTime!;

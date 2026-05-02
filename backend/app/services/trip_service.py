@@ -516,12 +516,6 @@ async def get_trip_with_details(db: AsyncSession, trip: Trip) -> dict:
                 .limit(1)
             )
             license_number = lic_res.scalar_one_or_none()
-            if not license_number and d.user_id:
-                from app.models.postgres.user import User
-                u_res = await db.execute(
-                    select(User.dl_number).where(User.id == d.user_id)
-                )
-                license_number = u_res.scalar_one_or_none()
             driver_data = {
                 "id": d.id,
                 "full_name": d.full_name,

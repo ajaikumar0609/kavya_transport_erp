@@ -4,7 +4,26 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.models.postgres.user import User, UserRole, Role, user_roles
-from app.core.security import verify_password, get_password_hash, create_tokens, decode_token, create_access_token
+from app.core.security import (
+    verify_password,
+    get_password_hash,
+    create_tokens,
+    decode_token,
+    create_access_token,
+    create_refresh_token,
+)
+from app.services.token_blacklist import (
+    blacklist_token,
+    is_token_blacklisted,
+    force_logout_user,
+)
+from datetime import datetime, timezone
+from fastapi import HTTPException, status as http_status
+
+# Pre-computed bcrypt hash of an unknown password — used to equalize timing when
+# the supplied identifier does not match any user, defeating user-enumeration
+# attacks based on response latency. Cost factor matches our default (12).
+_DUMMY_BCRYPT_HASH = "$2b$12$CwTycUXWue0Thq9StjUM0uJ8Cz3p1c.hp/ZQ.wdIwXZQpvhcTrPSe"
 
 
 async def authenticate_user(db: AsyncSession, email: str, password: str):
@@ -16,6 +35,8 @@ async def authenticate_user(db: AsyncSession, email: str, password: str):
     )
     user = result.scalar_one_or_none()
     if not user:
+        # Equalize timing to prevent user-enumeration via response latency.
+        verify_password(normalized_password, _DUMMY_BCRYPT_HASH)
         return None
     if not verify_password(normalized_password, user.password_hash):
         return None
@@ -54,6 +75,8 @@ async def authenticate_by_identifier(db: AsyncSession, identifier: str, password
             user = result.scalar_one_or_none()
 
     if not user:
+        # Equalize timing to prevent user-enumeration via response latency.
+        verify_password(normalized_password, _DUMMY_BCRYPT_HASH)
         return None
     if not verify_password(normalized_password, user.password_hash):
         return None
@@ -75,6 +98,8 @@ async def authenticate_by_phone(db: AsyncSession, phone: str, password: str):
     )
     user = result.scalar_one_or_none()
     if not user:
+        # Equalize timing to prevent user-enumeration via response latency.
+        verify_password(normalized_password, _DUMMY_BCRYPT_HASH)
         return None
     if not verify_password(normalized_password, user.password_hash):
         return None
@@ -121,31 +146,53 @@ async def get_user_by_email(db: AsyncSession, email: str):
 
 
 async def refresh_access_token(db: AsyncSession, refresh_token: str):
-    """Refresh access token using refresh token."""
+    """Rotate refresh token: validate the supplied token, blacklist its jti, and
+    issue a brand-new access + refresh pair. Returns a dict on success, None on
+    invalid/expired/revoked input.
+
+    Reuse of an already-rotated refresh token is treated as a possible theft
+    signal: the user is force-logged-out (all outstanding tokens invalidated).
+    """
     payload = decode_token(refresh_token)
     if not payload or payload.get("type") != "refresh":
         return None
 
+    jti = payload.get("jti")
     user_id = int(payload["sub"])
+    exp = payload.get("exp")
+
+    # Replay detection: if jti is already revoked, the token is being reused.
+    # Treat as theft and force-logout the user globally.
+    if jti and is_token_blacklisted(jti):
+        force_logout_user(user_id)
+        return None
+
     user = await get_user_by_id(db, user_id)
     if not user or not user.is_active:
         return None
 
+    # Blacklist the consumed refresh token for its remaining lifetime.
+    if jti and exp:
+        try:
+            expires_at = datetime.fromtimestamp(int(exp), tz=timezone.utc)
+            blacklist_token(jti, expires_at)
+        except Exception:
+            # Failure to blacklist is logged inside blacklist_token; do not block rotation.
+            pass
+
     roles = await get_user_roles(db, user_id)
     from app.middleware.permissions import get_user_permissions
-    from app.core.security import create_tokens
     permissions = get_user_permissions(roles)
-    tokens = create_tokens(
+    new_access = create_access_token(
         user_id=user.id,
         email=user.email,
         roles=roles,
+        permissions=permissions,
         tenant_id=user.tenant_id,
         branch_id=user.branch_id,
     )
-    return {
-        "access_token": tokens.access_token,
-        "refresh_token": tokens.refresh_token,
-    }
+    new_refresh = create_refresh_token(user_id=user.id, email=user.email)
+    return {"access_token": new_access, "refresh_token": new_refresh}
 
 
 async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str) -> bool:
@@ -156,4 +203,8 @@ async def change_password(db: AsyncSession, user_id: int, current_password: str,
         return False
     user.password_hash = get_password_hash(new_password)
     await db.flush()
+    # Invalidate every outstanding access/refresh token for this user.
+    # The forced_logout timestamp check in get_current_user rejects tokens
+    # issued before this moment, so a stolen token is killed on password change.
+    force_logout_user(user_id)
     return True

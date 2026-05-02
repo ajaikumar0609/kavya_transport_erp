@@ -9,22 +9,35 @@ class AuthState {
   final User? user;
   final bool isLoading;
   final String? error;
+  // OTP login step-2 state
+  final bool otpRequired;
+  final String? sessionId;
+  final String? phoneMasked;
 
   AuthState({
     this.user,
     this.isLoading = false,
     this.error,
+    this.otpRequired = false,
+    this.sessionId,
+    this.phoneMasked,
   });
 
   AuthState copyWith({
     User? user,
     bool? isLoading,
     String? error,
+    bool? otpRequired,
+    String? sessionId,
+    String? phoneMasked,
   }) {
     return AuthState(
       user: user ?? this.user,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      otpRequired: otpRequired ?? this.otpRequired,
+      sessionId: sessionId ?? this.sessionId,
+      phoneMasked: phoneMasked ?? this.phoneMasked,
     );
   }
 }
@@ -97,8 +110,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
   Future<void> login(String email, String password) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _authService.login(email, password);
-      state = state.copyWith(isLoading: false);
+      final result = await _authService.loginStep1(email, password);
+      if (result['otp_required'] == true) {
+        // Step-1 done — wait for OTP
+        state = AuthState(
+          isLoading: false,
+          otpRequired: true,
+          sessionId: result['session_id'] as String?,
+          phoneMasked: result['phone_masked'] as String?,
+        );
+      } else {
+        // Direct login (admin or no-OTP path)
+        state = state.copyWith(isLoading: false);
+      }
     } on DioException catch (e) {
       String message = 'Login failed. Please try again.';
       final responseData = e.response?.data;
@@ -113,6 +137,67 @@ class AuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       state = state.copyWith(isLoading: false, error: 'Login failed. Please try again.');
     }
+  }
+
+  /// Step-2: submit the 6-digit OTP received via SMS.
+  Future<void> confirmOtp(String otp) async {
+    if (state.sessionId == null) return;
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _authService.confirmOtp(state.sessionId!, otp);
+      state = state.copyWith(isLoading: false, otpRequired: false);
+    } on DioException catch (e) {
+      String message = 'OTP verification failed.';
+      final responseData = e.response?.data;
+      if (responseData is Map<String, dynamic>) {
+        message = responseData['detail']?.toString() ??
+            responseData['message']?.toString() ??
+            message;
+      } else if (e.response?.statusCode == 401) {
+        message = 'Invalid or expired OTP — request a new one';
+      } else if (e.response?.statusCode == 429) {
+        message = 'Too many attempts. Please wait before trying again.';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Verification failed. Please try again.');
+    }
+  }
+
+  /// Resend OTP — calls send-otp again with the same credentials.
+  /// The caller must hold phone + password from the first step.
+  Future<Map<String, dynamic>?> resendOtp(String phone, String password) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final result = await _authService.loginStep1(phone, password);
+      state = AuthState(
+        isLoading: false,
+        otpRequired: true,
+        sessionId: result['session_id'] as String?,
+        phoneMasked: result['phone_masked'] as String?,
+      );
+      return result;
+    } on DioException catch (e) {
+      String message = 'Failed to resend OTP.';
+      final responseData = e.response?.data;
+      if (responseData is Map<String, dynamic>) {
+        message = responseData['detail']?.toString() ??
+            responseData['message']?.toString() ??
+            message;
+      } else if (e.response?.statusCode == 429) {
+        message = 'Too many OTP requests. You can request up to 3 OTPs per 10 minutes.';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+      return null;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: 'Failed to resend OTP. Please try again.');
+      return null;
+    }
+  }
+
+  /// Go back to the login form (cancel OTP step).
+  void resetOtp() {
+    state = AuthState();
   }
 
   Future<void> loginMarketDriver({
