@@ -1043,7 +1043,7 @@ async def upload_my_document(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Upload a personal document (license, aadhaar, badge, medical cert)."""
-    ALLOWED_TYPES = ["driving_license", "aadhaar_card", "driver_badge", "medical_fitness"]
+    ALLOWED_TYPES = ["driving_license", "aadhaar_card", "driver_badge", "medical_fitness", "pan_card", "bank_passbook"]
     normalized_document_type = _normalize_driver_doc_type(document_type)
     if normalized_document_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid document_type. Allowed: {ALLOWED_TYPES}")
