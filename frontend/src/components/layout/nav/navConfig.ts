@@ -405,7 +405,6 @@ export const NAV_CONFIG: Record<HeaderNavRole, { sections: HeaderNavSection[] }>
         label: 'LR',
         items: [
           { label: 'All Lorry Receipts', route: '/lr', icon: 'file-text', description: 'View all lorry receipts' },
-          { label: 'My LRs', route: '/clerk/lrs', icon: 'user', description: 'LRs created by you' },
           { label: 'Upload POD', route: '/clerk/pod', icon: 'upload', description: 'Upload proof of delivery documents' },
           { label: 'Create LR', route: '/lr/new', icon: 'plus', description: 'Create a new lorry receipt' },
         ],
@@ -535,7 +534,6 @@ export const enterpriseNavConfig: NavMenuGroup[] = [
     roles: ['clerk'],
     items: [
       { label: 'All Lorry Receipts', path: '/lr', roles: ['clerk'] },
-      { label: 'My LRs', path: '/clerk/lrs', roles: ['clerk'] },
       { label: 'Upload POD', path: '/clerk/pod', roles: ['clerk'] },
       { label: 'Create LR', path: '/lr/new', roles: ['clerk'] },
     ],
