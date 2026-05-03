@@ -13,6 +13,7 @@ from app.schemas.lr import LRCreate, LRUpdate, LRStatusChange
 from app.services import lr_service
 from app.services.lr_pdf_service import build_lr_pdf, generate_and_upload_lr_pdf
 from app.services.notification_service import notification_service
+from app.models.postgres.market_trip import MarketTrip
 
 router = APIRouter()
 
@@ -91,6 +92,18 @@ async def print_lr(lr_id: int, db: AsyncSession = Depends(get_db), current_user:
             data[key] = str(val)
     # Field aliases for print template
     data["vehicle_number"] = data.get("vehicle_registration") or data.get("vehicle_number")
+    # If vehicle/driver missing (market trip LR), pull from linked MarketTrip
+    if (not data.get("vehicle_number") or not data.get("driver_name")) and lr.job_id:
+        from sqlalchemy import select as _sel
+        mt_result = await db.execute(
+            _sel(MarketTrip).where(MarketTrip.job_id == lr.job_id, MarketTrip.deleted_at.is_(None))
+        )
+        mt = mt_result.scalars().first()
+        if mt:
+            if not data.get("vehicle_number"):
+                data["vehicle_number"] = mt.vehicle_registration
+            if not data.get("driver_name"):
+                data["driver_name"] = mt.driver_name
     # Compute totals for print template
     freight = float(data.get("freight_amount") or 0)
     loading = float(data.get("loading_charges") or 0)
