@@ -8,6 +8,7 @@ export interface Column<T> {
   sortable?: boolean;
   className?: string;
   width?: string;
+  hidden?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -68,6 +69,7 @@ export default function DataTable<T extends Record<string, any>>({
   const totalPages = Math.ceil(total / pageSize) || 1;
   const hasSelection = selectedIds && onSelectAll && onSelectRow;
   const allSelected = hasSelection && data.length > 0 && data.every(item => selectedIds.has(item.id));
+  const visibleColumns = columns.filter(c => !c.hidden);
 
   const handleSearch = (q: string) => {
     setSearchQuery(q);
@@ -152,7 +154,7 @@ export default function DataTable<T extends Record<string, any>>({
                   />
                 </th>
               )}
-              {columns.map((col) => (
+              {visibleColumns.map((col) => (
                 <th
                   key={col.key}
                   className={`table-header ${col.sortable ? 'cursor-pointer hover:text-gray-700 select-none' : ''} ${col.className || ''}`}
@@ -176,7 +178,7 @@ export default function DataTable<T extends Record<string, any>>({
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={i} className="animate-pulse">
                   {hasSelection && <td className="table-cell pl-5"><div className="w-3.5 h-3.5 bg-gray-200 rounded" /></td>}
-                  {columns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <td key={col.key} className="table-cell">
                       <div className="h-4 bg-gray-100 rounded-md w-3/4" />
                     </td>
@@ -185,7 +187,7 @@ export default function DataTable<T extends Record<string, any>>({
               ))
             ) : data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (hasSelection ? 1 : 0)} className="px-6 py-16 text-center">
+                <td colSpan={visibleColumns.length + (hasSelection ? 1 : 0)} className="px-6 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     {emptyIcon || <Inbox size={36} className="text-gray-300" />}
                     <p className="text-sm font-medium text-gray-400">{emptyMessage}</p>
@@ -211,7 +213,7 @@ export default function DataTable<T extends Record<string, any>>({
                       />
                     </td>
                   )}
-                  {columns.map((col) => (
+                  {visibleColumns.map((col) => (
                     <td key={col.key} className={`table-cell ${col.className || ''}`}>
                       {col.render ? col.render(item) : item[col.key]}
                     </td>

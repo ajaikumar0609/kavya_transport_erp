@@ -177,20 +177,26 @@ export default function TripsPage() {
     {
       key: 'route',
       header: 'Route',
-      render: (t) => (
-        <div className="flex items-center gap-1 text-sm">
-          <MapPin size={14} className="text-green-500" />
-          <span>{t.origin}</span>
-          <span className="text-gray-300">→</span>
-          <MapPin size={14} className="text-red-500" />
-          <span>{t.destination}</span>
-        </div>
-      ),
+      render: (t) => {
+        const origin = (t as any).origin || '';
+        const destination = (t as any).destination || '';
+        if (!origin && !destination) return <span className="text-gray-400">—</span>;
+        return (
+          <div className="flex items-center gap-1 text-sm">
+            <MapPin size={14} className="text-green-500 shrink-0" />
+            <span>{origin || '—'}</span>
+            <span className="text-gray-300">→</span>
+            <MapPin size={14} className="text-red-500 shrink-0" />
+            <span>{destination || '—'}</span>
+          </div>
+        );
+      },
     },
     {
       key: 'planned_start',
       header: 'Start Date',
       sortable: true,
+      hidden: tripTypeTab === 'market',
       render: (t) => {
         const d = (t as any).actual_start || t.planned_start;
         if (!d) return <span className="text-gray-400">—</span>;
@@ -201,6 +207,7 @@ export default function TripsPage() {
       key: 'total_distance',
       header: 'Distance',
       sortable: true,
+      hidden: tripTypeTab === 'market',
       render: (t) => {
         const dist = (t as any).total_distance || (t as any).actual_distance_km || (t as any).planned_distance_km;
         return dist ? `${dist} km` : '—';
@@ -209,6 +216,7 @@ export default function TripsPage() {
     {
       key: 'total_expenses',
       header: 'Expenses',
+      hidden: tripTypeTab === 'market',
       render: (t) => (t as any).total_expenses ? `₹${Number((t as any).total_expenses).toLocaleString('en-IN')}` : '—',
     },
     {
@@ -239,6 +247,7 @@ export default function TripsPage() {
     {
       key: 'actions',
       header: 'Actions',
+      hidden: tripTypeTab === 'market',
       render: (t) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           {(t as any)._kind !== 'market' && (
