@@ -1586,6 +1586,7 @@ async def upload_driver_document_for_fleet(
     ALLOWED_TYPES = [
         "driving_license", "pan_card", "aadhaar_card",
         "bank_passbook", "driver_photo", "driver_fingerprint",
+        "driver_badge", "medical_fitness",
     ]
     document_type = document_type.lower().strip()
     if document_type not in ALLOWED_TYPES:

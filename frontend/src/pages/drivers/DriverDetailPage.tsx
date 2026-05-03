@@ -512,6 +512,10 @@ function DocumentsTab({ driver, driverId }: { driver: any; driverId: number }) {
             icon={<User size={22} />} docType="pan_card" driverId={driverId} onUploaded={onUploaded} />
           <DocCard label="Passbook" fileUrl={getUrl('bank_passbook', d.passbook_file_url)} fileName={d.passbook_file_name}
             icon={<FileText size={22} />} docType="bank_passbook" driverId={driverId} onUploaded={onUploaded} />
+          <DocCard label="Driver Badge" fileUrl={getUrl('driver_badge', null)} fileName={null}
+            icon={<Shield size={22} />} docType="driver_badge" driverId={driverId} onUploaded={onUploaded} />
+          <DocCard label="Medical Fitness" fileUrl={getUrl('medical_fitness', null)} fileName={null}
+            icon={<FileText size={22} />} docType="medical_fitness" driverId={driverId} onUploaded={onUploaded} />
         </div>
       </div>
     </div>
