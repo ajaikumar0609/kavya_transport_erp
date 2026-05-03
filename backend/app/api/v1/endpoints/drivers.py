@@ -955,23 +955,57 @@ async def get_my_documents(
     from app.services.s3_service import presign_stored_url as _presign_url_base
     for item in items:
         raw_url = item.get("file_url")
-        if raw_url:
+        if raw_url and not raw_url.startswith('data:'):
             try:
-                item["file_url"] = await _presign_url_base(raw_url) or raw_url
-            except Exception:
-                pass
+                presigned = await _presign_url_base(raw_url)
+                item["file_url"] = presigned if presigned else raw_url
+            except Exception as ex:
+                logger.warning(f"[me/documents] presign failed for {item.get('document_type')}: {ex}")
 
     # Also include documents stored directly on the User record (uploaded by fleet/HR)
+    _USER_DOC_FIELDS = {
+        "aadhaar_card":    "aadhaar_file_url",
+        "driving_license": "dl_file_url",
+        "pan_card":        "pan_file_url",
+        "bank_passbook":   "passbook_file_url",
+    }
     try:
         if driver.user_id:
             user_result = await db.execute(select(User).where(User.id == driver.user_id))
             user = user_result.scalar_one_or_none()
             if user:
                 from app.services.s3_service import presign_stored_url as _presign_url
+                from app.services import s3_service as _s3
 
-                async def _presign(url):
+                async def _migrate_data_url(data_url: str, doc_type: str) -> str:
+                    """Upload a base64 data: URL to S3, update the user record, return S3 URL."""
                     try:
-                        return await _presign_url(url) or None if url else None
+                        import base64 as _b64
+                        header, b64_data = data_url.split(',', 1)
+                        mime = 'image/png' if 'image/png' in header else 'image/jpeg'
+                        ext = '.png' if 'png' in mime else '.jpg'
+                        file_bytes = _b64.b64decode(b64_data)
+                        folder = f"driver-documents/{driver.id}"
+                        result = await _s3.upload_file(file_bytes, f"{doc_type}{ext}", folder, mime)
+                        new_url = result.get("url", "")
+                        if new_url and driver.user_id:
+                            user_field = _USER_DOC_FIELDS.get(doc_type)
+                            if user_field:
+                                setattr(user, user_field, new_url)
+                                await db.commit()
+                            logger.info(f"[me/documents] Migrated data: URL for {doc_type} → {new_url[:60]}")
+                        return new_url or data_url
+                    except Exception as mig_ex:
+                        logger.warning(f"[me/documents] data: URL migration failed for {doc_type}: {mig_ex}")
+                        return data_url
+
+                async def _resolve_url(url: str, doc_type: str) -> Optional[str]:
+                    if not url:
+                        return None
+                    if url.startswith('data:'):
+                        url = await _migrate_data_url(url, doc_type)
+                    try:
+                        return await _presign_url(url) or url
                     except Exception:
                         return url
 
@@ -989,7 +1023,7 @@ async def get_my_documents(
                             "document_type": doc_type,
                             "document_number": None,
                             "file_name": file_name,
-                            "file_url": await _presign(file_url),
+                            "file_url": await _resolve_url(file_url, doc_type),
                             "is_verified": True,
                             "remarks": None,
                             "uploaded_at": None,
