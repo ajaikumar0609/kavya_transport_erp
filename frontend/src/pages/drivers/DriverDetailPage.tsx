@@ -648,6 +648,7 @@ function AttendanceTab({ driverId }: { driverId: number }) {
   const { data, isLoading } = useQuery<DriverAttendance>({
     queryKey: ['driver-attendance', driverId, month],
     queryFn: () => driverService.getAttendance(driverId, { month }),
+    refetchInterval: 30_000, // real-time: refresh every 30 seconds
   });
 
   if (isLoading) return <div className="animate-pulse space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}</div>;
@@ -691,13 +692,15 @@ function AttendanceTab({ driverId }: { driverId: number }) {
               <th className="table-header">Day</th>
               <th className="table-header">Status</th>
               <th className="table-header">Check In</th>
-              <th className="table-header">Check Out</th>
               <th className="table-header">Hours</th>
-              <th className="table-header">Remarks</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((r) => (
+            {items.map((r) => {
+              const checkInTime = r.check_in_time
+                ? new Date(r.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                : null;
+              return (
               <tr key={r.date} className="border-b hover:bg-gray-50">
                 <td className="table-cell font-medium">{new Date(r.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
                 <td className="table-cell text-gray-500">{r.day.slice(0, 3)}</td>
@@ -706,12 +709,15 @@ function AttendanceTab({ driverId }: { driverId: number }) {
                     {r.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="table-cell">{r.check_in || '—'}</td>
-                <td className="table-cell">{r.check_out || '—'}</td>
+                <td className="table-cell">
+                  {checkInTime
+                    ? <span className="font-medium text-green-700">{checkInTime}</span>
+                    : <span className="text-gray-400">—</span>}
+                </td>
                 <td className="table-cell font-medium">{r.hours_worked > 0 ? `${r.hours_worked}h` : '—'}</td>
-                <td className="table-cell text-gray-400">{r.remarks || ''}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
