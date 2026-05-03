@@ -23,7 +23,6 @@ export default function LRListPage() {
   const isClerk = hasRole('clerk');
   const [filters, setFilters] = useState<FilterParams>({ page: 1, page_size: 20 });
   const [transportTab, setTransportTab] = useState<'' | 'fleet' | 'market'>('');
-  const [myLrs, setMyLrs] = useState<boolean>(searchParams.get('my_lrs') === 'true');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<LR | null>(null);
   const [editItem, setEditItem] = useState<LR | null>(null);
@@ -53,8 +52,8 @@ export default function LRListPage() {
   });
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['lr', filters, transportTab, myLrs],
-    queryFn: () => lrService.list({ ...filters, transport_type: transportTab === 'fleet' ? 'fleet' : undefined, my_lrs: myLrs || undefined } as any),
+    queryKey: ['lr', filters, transportTab],
+    queryFn: () => lrService.list({ ...filters, transport_type: transportTab === 'fleet' ? 'fleet' : undefined } as any),
     enabled: transportTab !== 'market',
   });
 
@@ -400,19 +399,6 @@ export default function LRListPage() {
             </button>
           ))}
         </div>
-        {/* My LRs toggle — visible to clerk and any user who wants to filter their own */}
-        <button
-          onClick={() => { setMyLrs((v) => !v); setFilters({ ...filters, page: 1 }); }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-            myLrs
-              ? 'bg-primary-50 border-primary-400 text-primary-700'
-              : 'bg-white border-gray-200 text-gray-500 hover:text-gray-700'
-          }`}
-          title="Show only LRs created by you"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="5"/><path d="M3 21v-2a9 9 0 0 1 18 0v2"/></svg>
-          My LRs
-        </button>
       </div>
 
       <DataTable
