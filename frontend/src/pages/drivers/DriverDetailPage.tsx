@@ -673,7 +673,8 @@ function AttendanceTab({ driverId }: { driverId: number }) {
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input-field w-44" />
         {summary && (
           <div className="flex gap-4 text-sm flex-wrap">
-            <span className="text-green-600 font-medium">{summary.present_days} Present</span>
+            <span className="text-green-600 font-medium">{(summary.present_days || 0) + (summary.late_days || 0)} Present</span>
+            {summary.late_days > 0 && <span className="text-yellow-600 font-medium">{summary.late_days} Late</span>}
             <span className="text-purple-600 font-medium">{summary.on_trip_days} On Trip</span>
             <span className="text-red-600 font-medium">{summary.absent_days} Absent</span>
             <span className="text-amber-600 font-medium">{summary.leave_days} Leave</span>
@@ -726,8 +727,8 @@ function AttendanceTab({ driverId }: { driverId: number }) {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-green-50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-green-700">{summary.present_days}</p>
-            <p className="text-xs text-green-600">Present</p>
+            <p className="text-lg font-bold text-green-700">{(summary.present_days || 0) + (summary.late_days || 0)}</p>
+            <p className="text-xs text-green-600">Present{summary.late_days > 0 ? ` (${summary.late_days} Late)` : ''}</p>
           </div>
           <div className="bg-red-50 rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-red-700">{summary.absent_days}</p>
