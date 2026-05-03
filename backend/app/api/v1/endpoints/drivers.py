@@ -951,6 +951,16 @@ async def get_my_documents(
         raise HTTPException(status_code=404, detail="Driver profile not found")
     items = await _collect_driver_documents(db, driver.id)
 
+    # Presign S3 URLs so the mobile app can display images from the private bucket
+    from app.services.s3_service import presign_stored_url as _presign_url_base
+    for item in items:
+        raw_url = item.get("file_url")
+        if raw_url:
+            try:
+                item["file_url"] = await _presign_url_base(raw_url) or raw_url
+            except Exception:
+                pass
+
     # Also include documents stored directly on the User record (uploaded by fleet/HR)
     try:
         if driver.user_id:
