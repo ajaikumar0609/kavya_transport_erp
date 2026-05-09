@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/kt_colors.dart';
 import '../../providers/fleet_dashboard_provider.dart';
 import '../../core/localization/locale_provider.dart';
@@ -44,11 +46,14 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
     }
   }
 
+  // Keys must match document_type values stored by the website (DocumentChecklist)
   static const _docMeta = <String, _DocDisplay>{
-    'rc_book': _DocDisplay('RC Book', Icons.menu_book_outlined, KTColors.info),
-    'insurance': _DocDisplay('Vehicle Insurance', Icons.shield_outlined, KTColors.success),
-    'pollution_certificate': _DocDisplay('Pollution Certificate', Icons.eco_outlined, Color(0xFF8B5CF6)),
-    'fitness_certificate': _DocDisplay('Fitness Certificate', Icons.health_and_safety_outlined, KTColors.danger),
+    'rc':          _DocDisplay('Registration Certificate (RC)', Icons.menu_book_outlined, KTColors.info),
+    'insurance':   _DocDisplay('Insurance Certificate', Icons.shield_outlined, KTColors.success),
+    'fitness':     _DocDisplay('Fitness Certificate', Icons.health_and_safety_outlined, KTColors.danger),
+    'puc':         _DocDisplay('PUC Certificate', Icons.eco_outlined, Color(0xFF8B5CF6)),
+    'permit':      _DocDisplay('Permit', Icons.map_outlined, KTColors.warning),
+    'tax_receipt': _DocDisplay('Road Tax Receipt', Icons.receipt_long_outlined, Color(0xFF6366F1)),
   };
 
   @override
@@ -283,7 +288,6 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
   }
 
   List<Widget> _buildDocumentCards() {
-    // Show all 4 expected types, marking missing ones
     final docMap = <String, Map<String, dynamic>>{};
     for (final d in _documents) {
       if (d is Map<String, dynamic>) {
@@ -292,12 +296,37 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
       }
     }
 
-    final orderedTypes = ['rc_book', 'insurance', 'pollution_certificate', 'fitness_certificate'];
-    return orderedTypes.map((type) {
-      final meta = _docMeta[type] ?? _DocDisplay(type.replaceAll('_', ' ').split(' ').map((w) => '${w[0].toUpperCase()}${w.substring(1)}').join(' '), Icons.description_outlined, KTColors.textMuted);
-      final doc = docMap[type];
-      return _buildSingleDocCard(meta, doc);
-    }).toList();
+    const requiredTypes  = ['rc', 'insurance', 'fitness', 'puc'];
+    const optionalTypes  = ['permit', 'tax_receipt'];
+
+    Widget sectionLabel(String text) => Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: KTColors.textMuted,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+
+    Widget docCard(String type) {
+      final meta = _docMeta[type] ?? _DocDisplay(
+        type.replaceAll('_', ' ').split(' ').map((w) => '${w[0].toUpperCase()}${w.substring(1)}').join(' '),
+        Icons.description_outlined,
+        KTColors.textMuted,
+      );
+      return _buildSingleDocCard(meta, docMap[type]);
+    }
+
+    return [
+      sectionLabel('REQUIRED DOCUMENTS'),
+      ...requiredTypes.map(docCard),
+      sectionLabel('OPTIONAL DOCUMENTS'),
+      ...optionalTypes.map(docCard),
+    ];
   }
 
   Widget _buildSingleDocCard(_DocDisplay meta, Map<String, dynamic>? doc) {
@@ -305,6 +334,7 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
     final verified = doc?['is_verified'] == true;
     final expiryStr = doc?['expiry_date'] as String?;
     final docNumber = doc?['document_number'] as String?;
+    final fileUrl = doc?['file_url'] as String?;
 
     // Calculate expiry status
     _ExpiryStatus expiryStatus = _ExpiryStatus.none;
@@ -344,81 +374,256 @@ class _DriverVehicleScreenState extends ConsumerState<DriverVehicleScreen> {
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Icon
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: (hasDoc ? meta.color : KTColors.textMuted).withAlpha(22),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(meta.icon, color: hasDoc ? meta.color : KTColors.textMuted, size: 22),
-            ),
-            const SizedBox(width: 14),
-            // Info
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    meta.label,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: hasDoc ? KTColors.textHeading : KTColors.textMuted,
-                      letterSpacing: 0.2,
-                    ),
+            Row(
+              children: [
+                // Icon
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: (hasDoc ? meta.color : KTColors.textMuted).withAlpha(22),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(height: 3),
-                  if (!hasDoc)
-                    const Text('Not available', style: TextStyle(fontSize: 12, color: KTColors.textMuted))
-                  else ...[
-                    if (docNumber != null && docNumber.isNotEmpty)
+                  child: Icon(meta.icon, color: hasDoc ? meta.color : KTColors.textMuted, size: 22),
+                ),
+                const SizedBox(width: 14),
+                // Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        docNumber,
-                        style: const TextStyle(fontSize: 12, color: KTColors.textMuted, fontFamily: 'monospace'),
-                      ),
-                    if (expiryLabel.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        expiryLabel,
+                        meta.label,
                         style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          color: expiryStatus == _ExpiryStatus.expired
-                              ? KTColors.danger
-                              : expiryStatus == _ExpiryStatus.expiringSoon
-                                  ? KTColors.warning
-                                  : KTColors.success,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: hasDoc ? KTColors.textHeading : KTColors.textMuted,
+                          letterSpacing: 0.2,
                         ),
                       ),
+                      const SizedBox(height: 3),
+                      if (!hasDoc)
+                        const Text('Not available', style: TextStyle(fontSize: 12, color: KTColors.textMuted))
+                      else ...[
+                        if (docNumber != null && docNumber.isNotEmpty)
+                          Text(
+                            docNumber,
+                            style: const TextStyle(fontSize: 12, color: KTColors.textMuted, fontFamily: 'monospace'),
+                          ),
+                        if (expiryLabel.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            expiryLabel,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: expiryStatus == _ExpiryStatus.expired
+                                  ? KTColors.danger
+                                  : expiryStatus == _ExpiryStatus.expiringSoon
+                                      ? KTColors.warning
+                                      : KTColors.success,
+                            ),
+                          ),
+                        ],
+                      ],
                     ],
-                  ],
-                ],
-              ),
+                  ),
+                ),
+                // Status badge
+                if (hasDoc)
+                  _expiryBadge(expiryStatus, verified)
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: KTColors.textMuted.withAlpha(20),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'N/A',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KTColors.textMuted, letterSpacing: 0.5),
+                    ),
+                  ),
+              ],
             ),
-            // Status badge
-            if (hasDoc)
-              _expiryBadge(expiryStatus, verified)
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: KTColors.textMuted.withAlpha(20),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'N/A',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KTColors.textMuted, letterSpacing: 0.5),
+            // View button (read-only — only fleet manager can change documents)
+            if (hasDoc && fileUrl != null && fileUrl.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(height: 1, color: KTColors.borderColor.withAlpha(80)),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _showVehicleDocPreview(meta, doc!),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: KTColors.info.withAlpha(80)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.visibility_outlined, size: 16, color: KTColors.info),
+                          const SizedBox(width: 6),
+                          const Text('View', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: KTColors.info, letterSpacing: 0.3)),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  void _showVehicleDocPreview(_DocDisplay meta, Map<String, dynamic> doc) {
+    final fileUrl = doc['file_url'] as String? ?? '';
+    final docNumber = doc['document_number'] as String?;
+    final expiryStr = doc['expiry_date'] as String?;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: KTColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: meta.color.withAlpha(18),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(
+                children: [
+                  Icon(meta.icon, color: meta.color, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      meta.label,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: KTColors.textHeading),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Image preview
+            if (fileUrl.isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                width: double.infinity,
+                color: KTColors.lightBg,
+                child: _buildVehicleImagePreview(fileUrl),
+              )
+            else
+              Container(
+                height: 180, color: KTColors.lightBg,
+                child: const Center(child: Icon(Icons.description_outlined, size: 56, color: KTColors.textMuted)),
+              ),
+            // Details
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  if (docNumber != null && docNumber.isNotEmpty)
+                    _detailRow('Document No.', docNumber),
+                  if (expiryStr != null)
+                    _detailRow('Expiry', _formatDate(expiryStr)),
+                  _detailRow('Note', 'Managed by fleet manager'),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: TextButton.styleFrom(foregroundColor: KTColors.textMuted, padding: const EdgeInsets.symmetric(vertical: 12)),
+                  child: const Text('Close', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVehicleImagePreview(String url) {
+    if (url.startsWith('data:')) {
+      try {
+        final commaIdx = url.indexOf(',');
+        if (commaIdx != -1) {
+          final bytes = base64Decode(url.substring(commaIdx + 1));
+          return Image.memory(bytes, fit: BoxFit.contain, errorBuilder: (_, __, ___) => _vehiclePreviewError(url));
+        }
+      } catch (_) {}
+      return _vehiclePreviewError(url);
+    }
+    return Image.network(
+      url, fit: BoxFit.contain,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Container(height: 180, color: KTColors.lightBg,
+          child: const Center(child: CircularProgressIndicator(color: KTColors.driverAccent, strokeWidth: 2)));
+      },
+      errorBuilder: (_, __, ___) => _vehiclePreviewError(url),
+    );
+  }
+
+  Widget _vehiclePreviewError(String url) {
+    return Container(
+      height: 180, color: KTColors.lightBg,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.broken_image_outlined, size: 40, color: KTColors.textMuted),
+          const SizedBox(height: 8),
+          const Text('Preview unavailable', style: TextStyle(color: KTColors.textMuted, fontSize: 13)),
+          if (url.startsWith('http')) ...[
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: () async {
+                final uri = Uri.tryParse(url);
+                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.open_in_browser, size: 16),
+              label: const Text('Open in browser'),
+              style: TextButton.styleFrom(foregroundColor: KTColors.driverAccent,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 13, color: KTColors.textMuted)),
+          Flexible(child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: KTColors.textHeading), textAlign: TextAlign.end)),
+        ],
+      ),
+    );
+  }
+
 
   Widget _expiryBadge(_ExpiryStatus status, bool verified) {
     Color color;

@@ -345,6 +345,72 @@ class ApiService {
     return {};
   }
 
+  /// Admin/fleet: get all documents for a specific vehicle (merged from both tables, presigned).
+  Future<List<dynamic>> getVehicleDocumentsForAdmin(int vehicleId) async {
+    final response = await _dio.get('/vehicles/$vehicleId/documents');
+    final data = response.data;
+    if (data is Map && data['data'] is List) return data['data'] as List<dynamic>;
+    return [];
+  }
+
+  /// Admin: upload a vehicle document to the central Document table (same as website).
+  /// document_type: rc | insurance | fitness | puc | permit | tax_receipt
+  Future<Map<String, dynamic>> uploadVehicleDocForAdmin(
+    int vehicleId,
+    File file,
+    String documentType, {
+    String? documentNumber,
+    String? expiryDate,
+  }) async {
+    final fileName = file.path.split('/').last;
+    final map = <String, dynamic>{
+      'file': await MultipartFile.fromFile(file.path, filename: fileName),
+      'entity_type': 'vehicle',
+      'entity_id': vehicleId.toString(),
+      'document_type': documentType,
+    };
+    if (documentNumber != null && documentNumber.isNotEmpty) map['document_number'] = documentNumber;
+    if (expiryDate != null && expiryDate.isNotEmpty) map['expiry_date'] = expiryDate;
+    final formData = FormData.fromMap(map);
+    final response = await _dio.post('/documents/upload', data: formData);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Admin: get documents for a client from the central Document table.
+  Future<List<dynamic>> getClientDocumentsForAdmin(int clientId) async {
+    final response = await _dio.get('/documents', queryParameters: {
+      'entity_type': 'client',
+      'entity_id': clientId,
+      'limit': 50,
+    });
+    final data = response.data;
+    if (data is Map && data['data'] is List) return data['data'] as List<dynamic>;
+    return [];
+  }
+
+  /// Admin: upload a client document to the central Document table (same as website).
+  /// document_type: gst_certificate | pan_card | other
+  Future<Map<String, dynamic>> uploadClientDocForAdmin(
+    int clientId,
+    File file,
+    String documentType, {
+    String? title,
+    String? documentNumber,
+  }) async {
+    final fileName = file.path.split('/').last;
+    final map = <String, dynamic>{
+      'file': await MultipartFile.fromFile(file.path, filename: fileName),
+      'entity_type': 'client',
+      'entity_id': clientId.toString(),
+      'document_type': documentType,
+    };
+    if (title != null && title.isNotEmpty) map['title'] = title;
+    if (documentNumber != null && documentNumber.isNotEmpty) map['document_number'] = documentNumber;
+    final formData = FormData.fromMap(map);
+    final response = await _dio.post('/documents/upload', data: formData);
+    return Map<String, dynamic>.from(response.data as Map);
+  }
+
   /// Upload a document (rc_book, insurance, pollution_certificate, fitness_certificate)
   /// directly to the vehicle_documents table via POST /vehicles/{id}/documents.
   Future<Map<String, dynamic>> uploadVehicleDocument(
@@ -422,6 +488,16 @@ class ApiService {
     FormData formData = FormData.fromMap(map);
     final response = await _dio.post('/drivers/me/documents/upload', data: formData);
     return Map<String, dynamic>.from(response.data as Map);
+  }
+
+  /// Admin/fleet: get all documents for a specific driver.
+  Future<List<dynamic>> getDriverDocumentsAdmin(int driverId) async {
+    final response = await _dio.get('/drivers/$driverId/documents');
+    final data = response.data;
+    if (data is Map && data['data'] is Map && data['data']['items'] is List) {
+      return data['data']['items'] as List<dynamic>;
+    }
+    return [];
   }
 
   /// Fleet manager uploads a document for a specific driver (upsert).

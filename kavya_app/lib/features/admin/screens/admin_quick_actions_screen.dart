@@ -26,7 +26,11 @@ class AdminQuickActionsScreen extends StatelessWidget {
             QuickActionTile(
                 label: 'Create LR',
                 color: KTColors.info,
-                onTap: () => context.push('/pa/jobs')),
+                onTap: () => context.push('/admin/lr/create')),
+            QuickActionTile(
+                label: 'Lorry Receipts',
+                color: const Color(0xFF7C4DFF),
+                onTap: () => context.push('/admin/lr')),
             QuickActionTile(
                 label: 'Upload doc',
                 color: Colors.teal,

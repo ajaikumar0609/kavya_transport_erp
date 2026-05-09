@@ -314,6 +314,13 @@ class FleetHomeScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    _ActionTile(
+                      context: context,
+                      label: 'Lorry Receipts',
+                      icon: Icons.receipt_long_rounded,
+                      color: const Color(0xFF7C4DFF),
+                      onTap: () => context.push('/fleet/lr'),
+                    ),
                   ],
                 ),
               ),

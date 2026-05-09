@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/kt_colors.dart';
 import '../../core/theme/kt_text_styles.dart';
 import '../../providers/fleet_dashboard_provider.dart';
@@ -549,12 +550,12 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
           .map((item) => {
                 'description': item.descriptionCtrl.text.trim(),
                 'hsn_code': item.hsnCtrl.text.trim(),
-                'no_of_packages': int.tryParse(item.packagesCtrl.text) ?? 0,
+                'packages': int.tryParse(item.packagesCtrl.text) ?? 0,
                 'package_type': item.packageType,
                 'quantity': double.tryParse(item.quantityCtrl.text) ?? 0,
                 'unit': item.unit,
-                'actual_weight_kg': double.tryParse(item.actualWeightCtrl.text) ?? 0,
-                'charged_weight_kg': double.tryParse(item.chargedWeightCtrl.text) ?? 0,
+                'actual_weight': double.tryParse(item.actualWeightCtrl.text) ?? 0,
+                'charged_weight': double.tryParse(item.chargedWeightCtrl.text) ?? 0,
                 'rate': double.tryParse(item.rateCtrl.text) ?? 0,
               })
           .toList();
@@ -572,6 +573,7 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
         'consignee_phone': _consigneePhoneCtrl.text.trim(),
         'origin': _originCityCtrl.text.trim(),
         'destination': _destCityCtrl.text.trim(),
+        if (_selectedClientId != null) 'client_id': _selectedClientId,
         if (!_isMarketTrip) ...{
           'vehicle_id': _selectedVehicleId,
           'driver_id': _selectedDriverId,
@@ -638,17 +640,8 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isMarketTrip
-                ? 'LR created with market trip details'
-                : _autoCreateTrip
-                    ? 'LR created and trip assigned to driver'
-                    : 'LR created successfully'),
-            backgroundColor: KTColors.success,
-          ),
-        );
-        context.pop(true);
+        final lrNumber = lrResp?['data']?['lr_number'] ?? lrResp?['lr_number'] ?? 'LR';
+        await _showLRCreatedDialog(lrId, lrNumber.toString());
       }
     } catch (e) {
       if (mounted) {
@@ -658,6 +651,79 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _showLRCreatedDialog(dynamic lrId, String lrNumber) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_rounded, color: KTColors.success, size: 56),
+            const SizedBox(height: 12),
+            Text('LR Created!',
+                style: KTTextStyles.h2.copyWith(color: KTColors.textHeading)),
+            const SizedBox(height: 4),
+            Text(lrNumber,
+                style: KTTextStyles.body
+                    .copyWith(color: KTColors.primary, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Text(_isMarketTrip
+                ? 'LR created with market trip details.'
+                : _autoCreateTrip
+                    ? 'LR created and trip assigned to driver.'
+                    : 'LR created successfully.',
+                textAlign: TextAlign.center,
+                style: KTTextStyles.bodySmall.copyWith(color: KTColors.textMuted)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              context.pop(true);
+            },
+            child: const Text('Done'),
+          ),
+          if (lrId != null)
+            FilledButton.icon(
+              icon: const Icon(Icons.print_rounded, size: 16),
+              label: const Text('Print LR'),
+              style: FilledButton.styleFrom(backgroundColor: KTColors.primary),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _printLR(lrId);
+                if (mounted) context.pop(true);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _printLR(dynamic lrId) async {
+    try {
+      final api = ref.read(apiServiceProvider);
+      final resp = await api.get('/lrs/$lrId/pdf');
+      final url = resp?['data']?['url'] ?? resp?['url'];
+      if (url != null && url.toString().isNotEmpty) {
+        final uri = Uri.parse(url.toString());
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      }
+    } catch (_) {}
+    // Fallback: open download endpoint with token
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open PDF. Try from the website.')),
+      );
     }
   }
 
@@ -1568,16 +1634,20 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
                             .toUpperCase();
                     final docNumber = doc['doc_number'] as String?;
                     final status = doc['status'] as String? ?? 'pending';
+                    final hasFile = (doc['file_url'] as String? ?? '').isNotEmpty;
                     final expiry = doc['expiry_date'] as String?;
                     final isExpired = status == 'expired';
                     final isVerified = status == 'verified' || status == 'valid';
+                    final isUploaded = !isVerified && !isExpired && hasFile;
                     final statusColor = isExpired
                         ? KTColors.danger
                         : isVerified
                             ? KTColors.success
-                            : const Color(0xFFD97706);
+                            : isUploaded
+                                ? KTColors.info
+                                : const Color(0xFFD97706);
                     final statusLabel =
-                        isExpired ? 'Expired' : isVerified ? 'Valid' : 'Pending';
+                        isExpired ? 'Expired' : isVerified ? 'Valid' : isUploaded ? 'Uploaded' : 'Pending';
                     return Container(
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

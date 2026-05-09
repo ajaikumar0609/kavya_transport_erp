@@ -37,7 +37,8 @@ class LRItemResponse(BaseModel):
 
 class LRCreate(BaseModel):
     lr_date: date
-    job_id: int
+    job_id: Optional[int] = None
+    client_id: Optional[int] = None
     consignor_name: str
     consignor_address: Optional[str] = None
     consignor_gstin: Optional[str] = None

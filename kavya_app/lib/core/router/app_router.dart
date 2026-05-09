@@ -116,6 +116,7 @@ import '../../features/admin/screens/admin_compliance_detail_screen.dart';
 import '../../features/admin/screens/admin_create_trip_screen.dart';
 import '../../features/admin/screens/admin_upload_doc_screen.dart';
 import '../../features/admin/screens/admin_reports_screen.dart';
+import '../../screens/shared/lr_list_screen.dart';
 // Pump Operator screens
 import '../../screens/pump/pump_home_screen.dart';
 import '../../screens/pump/pump_dashboard_screen.dart';
@@ -421,6 +422,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/fleet/trip/create', builder: (context, state) => const FleetCreateTripScreen()),
       GoRoute(path: '/fleet/lr/create', builder: (context, state) => const FleetCreateLRScreen()),
+      GoRoute(path: '/fleet/lr', builder: (context, state) => const LRListScreen()),
       GoRoute(path: '/fleet/expenses', builder: (context, state) => const Scaffold()),
       GoRoute(path: '/fleet/service/new', builder: (context, state) => const FleetServiceLogScreen()),
       GoRoute(path: '/fleet/tyre/new', builder: (context, state) => const FleetTyreEventScreen()),
@@ -853,6 +855,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/admin/ewb',
         parentNavigatorKey: appNavigatorKey,
         builder: (context, state) => const PAEWBListScreen(),
+      ),
+      GoRoute(
+        path: '/admin/lr',
+        parentNavigatorKey: appNavigatorKey,
+        builder: (context, state) => const LRListScreen(),
       ),
       GoRoute(
         path: '/admin/reports',

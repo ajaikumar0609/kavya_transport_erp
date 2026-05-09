@@ -161,25 +161,69 @@ async def get_vehicle_documents(
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.VEHICLE_READ)),
 ):
-    """Return all documents stored for a vehicle."""
+    """Return all documents stored for a vehicle — merges VehicleDocument + central Document tables."""
     from app.models.postgres.vehicle import VehicleDocument
-    result = await db.execute(
+    from app.models.postgres.document import Document, EntityType
+    from app.services.s3_service import presign_stored_url
+
+    async def _presign(url: str) -> str:
+        if not url:
+            return ''
+        try:
+            result = await presign_stored_url(url)
+            if result == '':
+                return ''
+            return result or url
+        except Exception:
+            return url
+
+    # Key: document_type (lowercase) → latest item (central table overrides VehicleDocument)
+    doc_map: dict = {}
+
+    # 1) VehicleDocument table
+    vd_result = await db.execute(
         select(VehicleDocument).where(VehicleDocument.vehicle_id == vehicle_id)
     )
-    docs = result.scalars().all()
-    items = [
-        {
+    for d in vd_result.scalars().all():
+        doc_type = (d.document_type or '').lower()
+        doc_map[doc_type] = {
             "id": d.id,
-            "document_type": d.document_type,
+            "source": "vehicle_document",
+            "document_type": doc_type,
             "document_number": d.document_number,
             "issue_date": str(d.issue_date) if d.issue_date else None,
             "expiry_date": str(d.expiry_date) if d.expiry_date else None,
-            "file_url": d.file_url,
+            "file_url": await _presign(d.file_url or ''),
             "is_verified": d.is_verified,
             "remarks": d.remarks,
+            "uploaded_at": d.created_at.isoformat() if hasattr(d, 'created_at') and d.created_at else None,
         }
-        for d in docs
-    ]
+
+    # 2) Central Document table (website uploads — overrides VehicleDocument for same type)
+    cd_result = await db.execute(
+        select(Document).where(
+            Document.entity_id == vehicle_id,
+            Document.entity_type == EntityType.VEHICLE,
+            Document.is_deleted == False,
+        ).order_by(Document.created_at.asc())
+    )
+    for cd in cd_result.scalars().all():
+        doc_type = cd.document_type.value.lower() if hasattr(cd.document_type, 'value') else str(cd.document_type).lower()
+        approval = cd.approval_status.value if hasattr(cd.approval_status, 'value') else str(cd.approval_status)
+        doc_map[doc_type] = {
+            "id": cd.id,
+            "source": "central",
+            "document_type": doc_type,
+            "document_number": cd.document_number,
+            "issue_date": None,
+            "expiry_date": str(cd.expiry_date) if cd.expiry_date else None,
+            "file_url": await _presign(cd.file_url or ''),
+            "is_verified": approval in ('APPROVED', 'approved'),
+            "remarks": cd.notes,
+            "uploaded_at": cd.created_at.isoformat() if cd.created_at else None,
+        }
+
+    items = list(doc_map.values())
     return APIResponse(success=True, data=items)
 
 

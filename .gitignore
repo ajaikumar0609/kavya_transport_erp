@@ -85,3 +85,10 @@ backend/uploads/documents/
 !.env.example
 !frontend/.env.production
 
+
+# Flutter generated / local files
+kavya_app/android/local.properties
+kavya_app/linux/flutter/ephemeral/
+kavya_app/windows/flutter/ephemeral/
+kavya_app/ios/Flutter/ephemeral/
+kavya_app/macos/Flutter/ephemeral/
