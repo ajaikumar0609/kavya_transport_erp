@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/kt_colors.dart';
 import '../../core/theme/kt_text_styles.dart';
 import '../../providers/pump_dashboard_provider.dart';
+import 'fleet_branch_employees_screen.dart';
 
 class FleetFuelEmployeesScreen extends ConsumerWidget {
   const FleetFuelEmployeesScreen({super.key});
@@ -90,7 +91,12 @@ class FleetFuelEmployeesScreen extends ConsumerWidget {
                   .map((b) => _BranchCard(
                         branch: b,
                         onTap: () {
-                          // TODO: navigate to branch employees screen
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => FleetBranchEmployeesScreen(branch: b),
+                            ),
+                          );
                         },
                       ))
                   .toList(),

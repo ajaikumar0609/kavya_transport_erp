@@ -15,6 +15,8 @@ from app.schemas.fuel_pump import (
     FuelTheftAlertResolve,
 )
 from app.services import fuel_pump_service, branch_service
+from app.models.postgres.user import User
+from sqlalchemy import select
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -68,9 +70,17 @@ async def create_fuel_branch(
     ])),
     db: AsyncSession = Depends(get_db),
 ):
+    # Resolve tenant_id — fall back to DB in case of old JWT without tenant_id
+    tenant_id = current_user.tenant_id
+    if tenant_id is None:
+        result = await db.execute(select(User).where(User.id == current_user.user_id))
+        user_row = result.scalar_one_or_none()
+        tenant_id = user_row.tenant_id if user_row else None
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="User has no tenant assigned")
     branch = await branch_service.create_branch(db, {
         **data.model_dump(exclude_none=True),
-        "tenant_id": current_user.tenant_id,
+        "tenant_id": tenant_id,
         "is_active": True,
     })
     return {

@@ -31,7 +31,16 @@ class FinanceSalaryScreen extends ConsumerWidget {
 
   String _rupees(dynamic paise) {
     if (paise == null) return '₹0';
-    final d = (paise is int ? paise : double.tryParse(paise.toString())?.toInt() ?? 0);
+    final double raw;
+    if (paise is int) {
+      raw = paise.toDouble();
+    } else if (paise is double) {
+      raw = paise;
+    } else {
+      raw = double.tryParse(paise.toString()) ?? 0.0;
+    }
+    if (!raw.isFinite) return '₹0';
+    final d = raw.toInt();
     final r = d / 100;
     if (r >= 100000) return '₹${(r / 100000).toStringAsFixed(2)}L';
     if (r >= 1000) return '₹${(r / 1000).toStringAsFixed(1)}K';
@@ -332,7 +341,18 @@ class _BulkPayButtonState extends ConsumerState<_BulkPayButton> {
     final sm = ScaffoldMessenger.of(context);
     final unpaid = widget.staff
         .where((s) => s['status'] == 'unpaid' && s['has_bank_account'] == true)
-        .map((s) => {'employee_id': s['employee_id'], 'amount_paise': s['salary_paise']})
+        .map((s) {
+          final rawPaise = s['salary_paise'];
+          final int safePaise;
+          if (rawPaise is int) {
+            safePaise = rawPaise;
+          } else if (rawPaise is double && rawPaise.isFinite) {
+            safePaise = rawPaise.toInt();
+          } else {
+            safePaise = 0;
+          }
+          return {'employee_id': s['employee_id'], 'amount_paise': safePaise};
+        })
         .toList();
 
     if (unpaid.isEmpty) {
@@ -386,7 +406,7 @@ class _BulkPayButtonState extends ConsumerState<_BulkPayButton> {
               ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF7C3AED)),
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('Pay All', style: TextStyle(color: Colors.white)),
+                child: const Text('Mark as Paid', style: TextStyle(color: Colors.white)),
               ),
             ],
           ),
@@ -395,8 +415,8 @@ class _BulkPayButtonState extends ConsumerState<_BulkPayButton> {
       },
       icon: _loading
           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-          : const Icon(Icons.send_rounded, size: 16),
-      label: Text('Pay All Unpaid (${widget.unpaidCount})'),
+          : const Icon(Icons.check_circle_outline_rounded, size: 16),
+      label: Text('Mark All as Paid (${widget.unpaidCount})'),
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFF7C3AED),
         foregroundColor: Colors.white,
@@ -437,7 +457,15 @@ class _StaffSalaryCardState extends ConsumerState<_StaffSalaryCard> {
   }
 
   void _prefillSalary() {
-    final paise = (widget.staff['salary_paise'] as int?) ?? 0;
+    final raw = widget.staff['salary_paise'];
+    final int paise;
+    if (raw is int) {
+      paise = raw;
+    } else if (raw is double && raw.isFinite) {
+      paise = raw.toInt();
+    } else {
+      paise = 0;
+    }
     final rupees = paise / 100;
     _salaryController.text = rupees > 0 ? rupees.toStringAsFixed(0) : '';
   }

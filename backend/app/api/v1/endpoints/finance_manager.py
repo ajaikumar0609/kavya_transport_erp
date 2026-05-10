@@ -229,6 +229,31 @@ async def payment_history(
             "date": d.reviewed_at.isoformat() if d.reviewed_at else None,
         })
 
+    # ── 5. Salary payments ──────────────────────────────────────────────────────
+    salary_r = await db.execute(
+        select(Payout)
+        .where(
+            Payout.payout_type == "salary",
+            Payout.status == "processed",
+            Payout.processed_at.isnot(None),
+        )
+        .order_by(Payout.processed_at.desc())
+        .limit(limit)
+    )
+    salary_payouts = salary_r.scalars().all()
+    for p in salary_payouts:
+        month_label = ""
+        if p.reference_id and "_" in p.reference_id:
+            month_label = p.reference_id.rsplit("_", 1)[-1]
+        items.append({
+            "type": "SALARY",
+            "title": f"Salary — {p.recipient_name or 'Employee'}",
+            "subtitle": month_label,
+            "amount_rupees": float(p.amount_paise) / 100 if p.amount_paise else 0.0,
+            "detail": f"Month: {month_label}" if month_label else "",
+            "date": p.processed_at.isoformat() if p.processed_at else None,
+        })
+
     # Sort combined list by date descending
     items.sort(key=lambda x: x.get("date") or "", reverse=True)
     items = items[:limit]

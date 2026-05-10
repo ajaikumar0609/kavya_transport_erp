@@ -147,6 +147,7 @@ import '../../screens/finance/finance_drivers_screen.dart';
 import '../../screens/finance/finance_salary_screen.dart';
 import '../../screens/finance/finance_payments_screen.dart';
 import '../../screens/finance/finance_notifications_screen.dart';
+import '../../screens/finance/finance_history_screen.dart';
 // Market Driver screens
 import '../../screens/market_driver/market_driver_otp_screen.dart';
 import '../../screens/market_driver/market_driver_trips_screen.dart';
@@ -592,6 +593,13 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(
               path: '/finance/payments',
               builder: (context, state) => const FinancePaymentsScreen(),
+            ),
+          ]),
+          // index 5 → History
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/finance/history',
+              builder: (context, state) => const FinanceHistoryScreen(),
             ),
           ]),
         ],

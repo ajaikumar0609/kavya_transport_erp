@@ -24,6 +24,8 @@ router = APIRouter()
 @router.get("/pump-operators", response_model=APIResponse)
 async def list_pump_operators(
     search: Optional[str] = None,
+    branch_id: Optional[int] = None,
+    unassigned: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
     _perm=Depends(require_permission(Permissions.FUEL_READ)),
@@ -36,6 +38,10 @@ async def list_pump_operators(
         .where(Role.name == "pump_operator")
         .where(User.is_active == True)
     )
+    if branch_id is not None:
+        query = query.where(User.branch_id == branch_id)
+    if unassigned:
+        query = query.where(User.branch_id == None)
     if search:
         search_filter = (
             User.first_name.ilike(f"%{search}%") |
@@ -65,6 +71,29 @@ async def list_pump_operators(
             "created_at": str(u.created_at) if u.created_at else None,
         })
     return APIResponse(success=True, data=items)
+
+
+class _AssignBranchBody(BaseModel):
+    branch_id: Optional[int] = None
+
+
+@router.patch("/pump-operators/{user_id}/assign-branch", response_model=APIResponse)
+async def assign_pump_operator_branch(
+    user_id: int,
+    body: _AssignBranchBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _perm=Depends(require_permission(Permissions.FUEL_CREATE)),
+):
+    """Assign or unassign a pump operator to a branch. Set branch_id=null to unassign."""
+    result = await db.execute(select(User).where(User.id == user_id, User.is_active == True))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.branch_id = body.branch_id
+    await db.commit()
+    await db.refresh(user)
+    return APIResponse(success=True, data={"id": user.id, "branch_id": user.branch_id}, message="Branch assigned")
 
 
 @router.get("/{user_id}/attendance", response_model=APIResponse)

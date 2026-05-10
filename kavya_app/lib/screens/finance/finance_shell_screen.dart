@@ -146,6 +146,11 @@ class FinanceShellScreen extends ConsumerWidget {
               selectedIcon: Icon(Icons.payments),
               label: 'Payments',
             ),
+            NavigationDestination(
+              icon: Icon(Icons.history_outlined),
+              selectedIcon: Icon(Icons.history),
+              label: 'History',
+            ),
           ],
         ),
       ),
