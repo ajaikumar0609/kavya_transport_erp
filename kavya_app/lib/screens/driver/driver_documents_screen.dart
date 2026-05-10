@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/kt_colors.dart';
 import '../../providers/fleet_dashboard_provider.dart';
 import '../../core/localization/locale_provider.dart';
@@ -267,40 +268,21 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
         ),
       );
     }
-    if (verified) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: KTColors.success.withAlpha(25),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_circle, size: 12, color: KTColors.success.withAlpha(220)),
-            const SizedBox(width: 4),
-            const Text(
-              'VERIFIED',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KTColors.success, letterSpacing: 0.5),
-            ),
-          ],
-        ),
-      );
-    }
+    // Document exists → always show UPLOADED
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: KTColors.driverAccent.withAlpha(25),
+        color: KTColors.success.withAlpha(25),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.schedule, size: 12, color: KTColors.driverAccent.withAlpha(220)),
+          Icon(Icons.check_circle, size: 12, color: KTColors.success.withAlpha(220)),
           const SizedBox(width: 4),
           const Text(
-            'PENDING',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KTColors.driverAccent, letterSpacing: 0.5),
+            'UPLOADED',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: KTColors.success, letterSpacing: 0.5),
           ),
         ],
       ),
@@ -410,7 +392,13 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
     setState(() { _loading = true; });
     try {
       final api = ref.read(apiServiceProvider);
-      await api.updateDriverDocument(doc.id, file, documentNumber: docNumber);
+      // id == 0 means the doc came from the user record (not driver_documents table).
+      // Use upload (upsert by document_type) instead of PUT by id.
+      if (doc.id == 0) {
+        await api.uploadDriverDocument(file, meta.key, documentNumber: docNumber);
+      } else {
+        await api.updateDriverDocument(doc.id, file, documentNumber: docNumber);
+      }
       await _loadDocuments();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -534,6 +522,64 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
     );
   }
 
+  Widget _buildImagePreview(String url) {
+    // Handle base64 data URLs (e.g. data:image/jpeg;base64,...)
+    if (url.startsWith('data:')) {
+      try {
+        final commaIdx = url.indexOf(',');
+        if (commaIdx != -1) {
+          final b64 = url.substring(commaIdx + 1);
+          final bytes = base64Decode(b64);
+          return Image.memory(bytes, fit: BoxFit.contain, errorBuilder: (_, __, ___) => _previewError(url));
+        }
+      } catch (_) {}
+      return _previewError(url);
+    }
+    // Handle presigned or public https URLs
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          height: 180,
+          color: KTColors.lightBg,
+          child: const Center(child: CircularProgressIndicator(color: KTColors.driverAccent, strokeWidth: 2)),
+        );
+      },
+      errorBuilder: (_, __, ___) => _previewError(url),
+    );
+  }
+
+  Widget _previewError([String? url]) {
+    return Container(
+      height: 180,
+      color: KTColors.lightBg,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.broken_image_outlined, size: 40, color: KTColors.textMuted),
+          const SizedBox(height: 8),
+          const Text('Preview unavailable', style: TextStyle(color: KTColors.textMuted, fontSize: 13)),
+          if (url != null && url.startsWith('http')) ...[
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: () async {
+                final uri = Uri.tryParse(url);
+                if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+              },
+              icon: const Icon(Icons.open_in_browser, size: 16),
+              label: const Text('Open in browser'),
+              style: TextButton.styleFrom(
+                foregroundColor: KTColors.driverAccent,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
   Widget _detailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

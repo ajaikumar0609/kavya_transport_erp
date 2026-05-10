@@ -898,23 +898,66 @@ async def get_my_vehicle(
     if not vehicle:
         return APIResponse(success=True, data=None, message="Vehicle not found")
 
-    # Get vehicle documents
+    # Get vehicle documents and presign S3 URLs
+    # Merge from two sources: VehicleDocument table AND central Document table (used by website)
+    from app.services.s3_service import presign_stored_url as _presign_veh
+
+    async def _presign(url: str) -> str:
+        if not url:
+            return url
+        try:
+            result = await _presign_veh(url)
+            # '' means file confirmed not found in S3 — don't fall back to raw URL
+            if result == '':
+                return ''
+            return result or url
+        except Exception:
+            return url
+
+    doc_items_map: dict = {}  # keyed by document_type (lowercase), last-write wins for VehicleDocument
+
+    # 1) Central Document table (website uploads)
+    central_result = await db.execute(
+        select(Document).where(
+            Document.entity_id == vehicle.id,
+            Document.entity_type.in_([EntityType.VEHICLE, "VEHICLE", "vehicle"]),
+            Document.is_deleted == False,
+        )
+    )
+    for cd in central_result.scalars().all():
+        doc_type = cd.document_type.value.lower() if hasattr(cd.document_type, "value") else str(cd.document_type).lower()
+        approval = cd.approval_status.value if hasattr(cd.approval_status, "value") else str(cd.approval_status)
+        presigned = await _presign(cd.file_url or "")
+        doc_items_map[doc_type] = {
+            "id": cd.id,
+            "document_type": doc_type,
+            "document_number": cd.document_number,
+            "issue_date": None,
+            "expiry_date": str(cd.expiry_date) if cd.expiry_date else None,
+            "file_url": presigned,
+            "is_verified": approval in ("APPROVED", "approved"),
+            "remarks": None,
+        }
+
+    # 2) VehicleDocument table (overrides if same type exists)
     docs_result = await db.execute(
         select(VehicleDocument).where(VehicleDocument.vehicle_id == vehicle.id)
     )
-    docs = docs_result.scalars().all()
-    doc_items = []
-    for d in docs:
-        doc_items.append({
+    for d in docs_result.scalars().all():
+        doc_type = d.document_type.lower() if d.document_type else d.document_type
+        presigned = await _presign(d.file_url or "")
+        doc_items_map[doc_type] = {
             "id": d.id,
-            "document_type": d.document_type,
+            "document_type": doc_type,
             "document_number": d.document_number,
             "issue_date": str(d.issue_date) if d.issue_date else None,
             "expiry_date": str(d.expiry_date) if d.expiry_date else None,
-            "file_url": d.file_url,
+            "file_url": presigned,
             "is_verified": d.is_verified,
             "remarks": d.remarks,
-        })
+        }
+
+    doc_items = list(doc_items_map.values())
 
     data = {
         "vehicle": {
@@ -1011,19 +1054,21 @@ async def upload_my_document(
     if not driver:
         raise HTTPException(status_code=404, detail="Driver profile not found")
 
-    existing = await db.execute(
+    existing_result = await db.execute(
         select(DriverDocument).where(
             DriverDocument.driver_id == driver.id,
             DriverDocument.document_type == normalized_document_type,
         )
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Document already exists. Use PUT to update.")
+    existing_doc = existing_result.scalar_one_or_none()
+    # If already exists, update it (upsert behaviour — same as PUT)
+    is_update = existing_doc is not None
 
     from app.services import s3_service
     content = await file.read()
     folder = f"driver-documents/{driver.id}"
     result = await s3_service.upload_file(content, file.filename, folder, file.content_type)
+    file_url = result.get("url", "")
 
     extracted_issue_date: Optional[date] = None
     extracted_expiry_date: Optional[date] = None
@@ -1042,14 +1087,37 @@ async def upload_my_document(
         except Exception:
             pass
 
-    doc = DriverDocument(
-        driver_id=driver.id,
-        document_type=normalized_document_type,
-        document_number=document_number,
-        file_url=result.get("url", ""),
-        is_verified=False,
-    )
-    db.add(doc)
+    if is_update:
+        existing_doc.file_url = file_url
+        existing_doc.is_verified = False
+        if document_number:
+            existing_doc.document_number = document_number
+        doc = existing_doc
+    else:
+        doc = DriverDocument(
+            driver_id=driver.id,
+            document_type=normalized_document_type,
+            document_number=document_number,
+            file_url=file_url,
+            is_verified=False,
+        )
+        db.add(doc)
+
+    # Sync to user table so website also sees the updated file
+    _DOC_TO_USER = {
+        "aadhaar_card":    ("aadhaar_file_url",  "aadhaar_file_name"),
+        "driving_license": ("dl_file_url",        "dl_file_name"),
+        "pan_card":        ("pan_file_url",        "pan_file_name"),
+        "bank_passbook":   ("passbook_file_url",   "passbook_file_name"),
+    }
+    if normalized_document_type in _DOC_TO_USER and driver.user_id:
+        url_field, name_field = _DOC_TO_USER[normalized_document_type]
+        user_result = await db.execute(select(User).where(User.id == driver.user_id))
+        linked_user = user_result.scalar_one_or_none()
+        if linked_user:
+            setattr(linked_user, url_field, file_url)
+            setattr(linked_user, name_field, file.filename)
+
     await db.commit()
     await db.refresh(doc)
 
@@ -1147,6 +1215,22 @@ async def update_my_document(
         doc.document_number = resolved_document_number
     await db.commit()
     await db.refresh(doc)
+
+    # Sync to user table so website also sees the update
+    _DOC_TO_USER_PUT = {
+        "aadhaar_card":    ("aadhaar_file_url",  "aadhaar_file_name"),
+        "driving_license": ("dl_file_url",        "dl_file_name"),
+        "pan_card":        ("pan_file_url",        "pan_file_name"),
+        "bank_passbook":   ("passbook_file_url",   "passbook_file_name"),
+    }
+    if doc.document_type in _DOC_TO_USER_PUT and driver.user_id:
+        url_field, name_field = _DOC_TO_USER_PUT[doc.document_type]
+        user_result = await db.execute(select(User).where(User.id == driver.user_id))
+        linked_user = user_result.scalar_one_or_none()
+        if linked_user:
+            setattr(linked_user, url_field, doc.file_url)
+            setattr(linked_user, name_field, file.filename)
+            await db.commit()
 
     if doc.document_type == "driving_license":
         try:

@@ -3,11 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 
 from app.models.postgres.lr import LR, LRItem, LRDocument, LRStatus, PaymentMode
-from app.models.postgres.job import Job
+from app.models.postgres.job import Job, JobStatusEnum
 from app.models.postgres.vehicle import Vehicle
 from app.models.postgres.driver import Driver
 from app.models.postgres.trip import Trip, TripStatusEnum
-from app.utils.generators import generate_lr_number, generate_trip_number
+from app.utils.generators import generate_lr_number, generate_job_number, generate_trip_number
 
 
 VALID_LR_TRANSITIONS = {
@@ -133,10 +133,38 @@ async def get_lr(db: AsyncSession, lr_id: int):
 async def create_lr(db: AsyncSession, data: dict, user_id: int = None) -> LR:
     data = dict(data)
     items_data = data.pop("items", [])
+    client_id = data.pop("client_id", None)
     data["lr_number"] = generate_lr_number()
     data["created_by"] = user_id
     data["status"] = _coerce_enum(LRStatus, data.get("status", "draft"))
     data["payment_mode"] = _coerce_enum(PaymentMode, data.get("payment_mode", "to_be_billed"))
+
+    # Auto-create a job if job_id is not provided (e.g., created from mobile app)
+    if not data.get("job_id"):
+        import datetime as _dt
+        origin = data.get("origin") or "Origin"
+        destination = data.get("destination") or "Destination"
+        # Find a default/walk-in client if none provided
+        resolved_client_id = client_id
+        if not resolved_client_id:
+            result = await db.execute(select(Job).order_by(Job.id.asc()).limit(1))
+            first_job = result.scalar_one_or_none()
+            resolved_client_id = first_job.client_id if first_job else None
+        if resolved_client_id:
+            auto_job = Job(
+                job_number=generate_job_number(),
+                job_date=data.get("lr_date") or _dt.date.today(),
+                client_id=resolved_client_id,
+                origin_address=origin,
+                origin_city=origin,
+                destination_address=destination,
+                destination_city=destination,
+                status=JobStatusEnum.APPROVED,
+                created_by=user_id,
+            )
+            db.add(auto_job)
+            await db.flush()
+            data["job_id"] = auto_job.id
 
     # Calculate total freight
     freight = float(data.get("freight_amount") or 0)

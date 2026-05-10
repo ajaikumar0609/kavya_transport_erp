@@ -69,6 +69,56 @@ async def get_last_cargo_items(
     return APIResponse(success=True, data=items)
 
 
+@router.get("/with-ewb", response_model=APIResponse)
+async def list_lrs_with_ewb(
+    filter: Optional[str] = Query(None, description="active | expired"),
+    db: AsyncSession = Depends(get_db),
+    current_user: TokenData = Depends(get_current_user),
+    _perm=Depends(require_permission(Permissions.LR_READ)),
+):
+    """Return LRs that have an E-way bill number, filtered by active/expired status."""
+    from sqlalchemy import select as _sel
+    from app.models.postgres.lr import LR
+    from datetime import datetime as _dt
+
+    now = _dt.utcnow()
+    query = _sel(LR).where(
+        LR.is_deleted == False,
+        LR.eway_bill_number.isnot(None),
+        LR.eway_bill_number != '',
+    )
+    if filter == 'active':
+        query = query.where(
+            LR.eway_bill_valid_until.isnot(None),
+            LR.eway_bill_valid_until > now,
+        )
+    elif filter == 'expired':
+        from sqlalchemy import or_
+        query = query.where(
+            or_(
+                LR.eway_bill_valid_until.is_(None),
+                LR.eway_bill_valid_until <= now,
+            )
+        )
+    query = query.order_by(LR.eway_bill_valid_until.asc().nulls_last())
+    result = await db.execute(query)
+    lrs = result.scalars().all()
+
+    items = []
+    for lr in lrs:
+        items.append({
+            "id": lr.id,
+            "lr_number": lr.lr_number,
+            "origin": lr.origin,
+            "destination": lr.destination,
+            "eway_bill_number": lr.eway_bill_number,
+            "eway_bill_date": str(lr.eway_bill_date) if lr.eway_bill_date else None,
+            "eway_bill_valid_until": lr.eway_bill_valid_until.isoformat() if lr.eway_bill_valid_until else None,
+            "is_expired": (lr.eway_bill_valid_until is None or lr.eway_bill_valid_until <= now),
+        })
+    return APIResponse(success=True, data=items)
+
+
 @router.get("/{lr_id}", response_model=APIResponse)
 async def get_lr(lr_id: int, db: AsyncSession = Depends(get_db), current_user: TokenData = Depends(get_current_user)):
     lr = await lr_service.get_lr(db, lr_id)
@@ -126,10 +176,11 @@ async def create_lr(
 ):
     lr = await lr_service.create_lr(db, data.model_dump(), current_user.user_id)
     freight_fmt = f"₹{float(lr.freight_amount or 0):,.0f}"
+    job_ref = f"job #{lr.job_id}" if lr.job_id else lr.lr_number
     await notification_service.send(
         db, event_type="LR_CREATED",
         title="LR created",
-        body=f"LR {lr.lr_number} created for job #{lr.job_id}",
+        body=f"LR {lr.lr_number} created for {job_ref}",
         target_roles=["MANAGER"],
         data={"lr_id": str(lr.id)},
         urgency="normal", triggered_by=current_user.user_id,

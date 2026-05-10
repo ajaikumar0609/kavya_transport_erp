@@ -220,6 +220,7 @@ async def list_users(
         items.append({
             "id": u.id, "email": u.email, "first_name": u.first_name,
             "last_name": u.last_name, "phone": u.phone, "avatar_url": u.avatar_url, "roles": roles,
+            "employee_id": u.employee_id,
             "is_active": u.is_active,
             "last_login": str(u.last_login) if u.last_login else None,
             "created_at": str(u.created_at) if u.created_at else None,
@@ -268,6 +269,7 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_use
     data = {
         "id": user.id, "email": user.email, "first_name": user.first_name,
         "last_name": user.last_name, "phone": user.phone, "avatar_url": user.avatar_url, "roles": roles,
+        "employee_id": user.employee_id,
         "is_active": user.is_active, "created_at": str(user.created_at) if user.created_at else None,
         "date_of_birth": str(user.date_of_birth) if user.date_of_birth else None,
         "gender": user.gender,
