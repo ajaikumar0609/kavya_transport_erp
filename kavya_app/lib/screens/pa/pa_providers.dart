@@ -60,7 +60,7 @@ final paEWBListProvider = FutureProvider.autoDispose<List<dynamic>>((ref) async 
   final api = ref.read(apiServiceProvider);
 
   final response = await api.get(
-    '/lrs/with-ewb',
+    '/lr/with-ewb',
     queryParameters: {if (filter != null) 'filter': filter},
   );
   if (response is Map && response['data'] is List) return response['data'] as List<dynamic>;

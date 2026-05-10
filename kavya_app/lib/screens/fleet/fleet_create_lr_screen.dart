@@ -709,7 +709,7 @@ class _FleetCreateLRScreenState extends ConsumerState<FleetCreateLRScreen> {
   Future<void> _printLR(dynamic lrId) async {
     try {
       final api = ref.read(apiServiceProvider);
-      final resp = await api.get('/lrs/$lrId/pdf');
+      final resp = await api.get('/lr/$lrId/pdf');
       final url = resp?['data']?['url'] ?? resp?['url'];
       if (url != null && url.toString().isNotEmpty) {
         final uri = Uri.parse(url.toString());
