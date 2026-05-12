@@ -26,7 +26,10 @@ export function openDocumentUrl(fileUrl: string | null | undefined): void {
     window.open(fileUrl, '_blank', 'noreferrer');
   } else if (fileUrl.startsWith('/uploads/') || fileUrl.startsWith('/api/')) {
     // Local server file — must be served from the backend API, not the frontend domain.
-    window.open(`https://api.kavyatransports.com${fileUrl}`, '_blank', 'noreferrer');
+    const apiOrigin = import.meta.env.DEV
+      ? (import.meta.env.VITE_PROXY_TARGET || 'http://localhost:8000').replace(/\/$/, '')
+      : (import.meta.env.VITE_API_URL || 'https://api.kavyatransports.com').replace(/\/api\/v1$/, '').replace(/\/$/, '');
+    window.open(`${apiOrigin}${fileUrl}`, '_blank', 'noreferrer');
   } else {
     window.open(fileUrl, '_blank', 'noreferrer');
   }

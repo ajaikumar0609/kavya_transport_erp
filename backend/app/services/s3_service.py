@@ -81,6 +81,7 @@ async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
     """Convert a stored S3 URL (full URL or key) into a presigned URL.
     Returns '' only when the key is confirmed missing (NoSuchKey/404).
     Falls through and presigns for AccessDenied or other transient errors.
+    All blocking boto3 calls are run in a thread to avoid blocking the event loop.
     """
     if not url:
         return url
@@ -93,6 +94,7 @@ async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
         return url
     if not _use_local_storage():
         try:
+            import asyncio
             import boto3
             from botocore.exceptions import ClientError
             bucket = getattr(settings, 'AWS_S3_BUCKET', '')
@@ -110,19 +112,23 @@ async def presign_stored_url(url: str, expires_in: int = 3600) -> str:
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
                 region_name=region)
-            # Only return '' for NoSuchKey/404; presign anyway for other errors
-            try:
-                s3.head_object(Bucket=bucket, Key=s3_key)
-            except ClientError as head_err:
-                code = head_err.response.get('Error', {}).get('Code', '')
-                if code in ('404', 'NoSuchKey'):
-                    logger.warning('presign_stored_url: key not found in S3: %s', s3_key)
-                    return ''
-                # AccessDenied or other — fall through and presign anyway
-            except Exception as head_err:
-                logger.warning('presign_stored_url: head_object error: %s', str(head_err)[:100])
-            return s3.generate_presigned_url('get_object',
-                Params={'Bucket': bucket, 'Key': s3_key}, ExpiresIn=expires_in)
+
+            def _blocking_presign() -> str:
+                # head_object is an HTTP call — must run in a thread
+                try:
+                    s3.head_object(Bucket=bucket, Key=s3_key)
+                except ClientError as head_err:
+                    code = head_err.response.get('Error', {}).get('Code', '')
+                    if code in ('404', 'NoSuchKey'):
+                        logger.warning('presign_stored_url: key not found in S3: %s', s3_key)
+                        return ''
+                    # AccessDenied or other — fall through and presign anyway
+                except Exception as head_err:
+                    logger.warning('presign_stored_url: head_object error: %s', str(head_err)[:100])
+                return s3.generate_presigned_url('get_object',
+                    Params={'Bucket': bucket, 'Key': s3_key}, ExpiresIn=expires_in)
+
+            return await asyncio.to_thread(_blocking_presign)
         except Exception as e:
             logger.warning('presign_stored_url failed: ' + str(e)[:120])
             return url
