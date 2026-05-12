@@ -512,6 +512,10 @@ function DocumentsTab({ driver, driverId }: { driver: any; driverId: number }) {
             icon={<User size={22} />} docType="pan_card" driverId={driverId} onUploaded={onUploaded} />
           <DocCard label="Passbook" fileUrl={getUrl('bank_passbook', d.passbook_file_url)} fileName={d.passbook_file_name}
             icon={<FileText size={22} />} docType="bank_passbook" driverId={driverId} onUploaded={onUploaded} />
+          <DocCard label="Driver Badge" fileUrl={getUrl('driver_badge', null)} fileName={null}
+            icon={<Shield size={22} />} docType="driver_badge" driverId={driverId} onUploaded={onUploaded} />
+          <DocCard label="Medical Fitness" fileUrl={getUrl('medical_fitness', null)} fileName={null}
+            icon={<FileText size={22} />} docType="medical_fitness" driverId={driverId} onUploaded={onUploaded} />
         </div>
       </div>
     </div>
@@ -648,6 +652,7 @@ function AttendanceTab({ driverId }: { driverId: number }) {
   const { data, isLoading } = useQuery<DriverAttendance>({
     queryKey: ['driver-attendance', driverId, month],
     queryFn: () => driverService.getAttendance(driverId, { month }),
+    refetchInterval: 30_000, // real-time: refresh every 30 seconds
   });
 
   if (isLoading) return <div className="animate-pulse space-y-3">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 bg-gray-100 rounded" />)}</div>;
@@ -672,7 +677,8 @@ function AttendanceTab({ driverId }: { driverId: number }) {
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input-field w-44" />
         {summary && (
           <div className="flex gap-4 text-sm flex-wrap">
-            <span className="text-green-600 font-medium">{summary.present_days} Present</span>
+            <span className="text-green-600 font-medium">{(summary.present_days || 0) + (summary.late_days || 0)} Present</span>
+            {summary.late_days > 0 && <span className="text-yellow-600 font-medium">{summary.late_days} Late</span>}
             <span className="text-purple-600 font-medium">{summary.on_trip_days} On Trip</span>
             <span className="text-red-600 font-medium">{summary.absent_days} Absent</span>
             <span className="text-amber-600 font-medium">{summary.leave_days} Leave</span>
@@ -691,13 +697,15 @@ function AttendanceTab({ driverId }: { driverId: number }) {
               <th className="table-header">Day</th>
               <th className="table-header">Status</th>
               <th className="table-header">Check In</th>
-              <th className="table-header">Check Out</th>
               <th className="table-header">Hours</th>
-              <th className="table-header">Remarks</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((r) => (
+            {items.map((r) => {
+              const checkInTime = r.check_in_time
+                ? new Date(r.check_in_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+                : null;
+              return (
               <tr key={r.date} className="border-b hover:bg-gray-50">
                 <td className="table-cell font-medium">{new Date(r.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</td>
                 <td className="table-cell text-gray-500">{r.day.slice(0, 3)}</td>
@@ -706,12 +714,15 @@ function AttendanceTab({ driverId }: { driverId: number }) {
                     {r.status.replace(/_/g, ' ')}
                   </span>
                 </td>
-                <td className="table-cell">{r.check_in || '—'}</td>
-                <td className="table-cell">{r.check_out || '—'}</td>
+                <td className="table-cell">
+                  {checkInTime
+                    ? <span className="font-medium text-green-700">{checkInTime}</span>
+                    : <span className="text-gray-400">—</span>}
+                </td>
                 <td className="table-cell font-medium">{r.hours_worked > 0 ? `${r.hours_worked}h` : '—'}</td>
-                <td className="table-cell text-gray-400">{r.remarks || ''}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -720,8 +731,8 @@ function AttendanceTab({ driverId }: { driverId: number }) {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-green-50 rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-green-700">{summary.present_days}</p>
-            <p className="text-xs text-green-600">Present</p>
+            <p className="text-lg font-bold text-green-700">{(summary.present_days || 0) + (summary.late_days || 0)}</p>
+            <p className="text-xs text-green-600">Present{summary.late_days > 0 ? ` (${summary.late_days} Late)` : ''}</p>
           </div>
           <div className="bg-red-50 rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-red-700">{summary.absent_days}</p>

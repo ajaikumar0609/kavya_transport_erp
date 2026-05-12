@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,6 +26,8 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
   static const _docTypes = [
     _DocMeta(key: 'driving_license', label: 'Driving License', icon: Icons.badge_outlined, color: KTColors.info),
     _DocMeta(key: 'aadhaar_card', label: 'Aadhaar Card', icon: Icons.credit_card_outlined, color: KTColors.success),
+    _DocMeta(key: 'pan_card', label: 'PAN Card', icon: Icons.credit_card_outlined, color: KTColors.warning),
+    _DocMeta(key: 'bank_passbook', label: 'Passbook', icon: Icons.account_balance_outlined, color: KTColors.success),
     _DocMeta(key: 'driver_badge', label: 'Driver Badge', icon: Icons.verified_user_outlined, color: KTColors.driverAccent),
     _DocMeta(key: 'medical_fitness', label: 'Medical Fitness', icon: Icons.health_and_safety_outlined, color: KTColors.danger),
   ];
@@ -463,22 +466,7 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
                 constraints: const BoxConstraints(maxHeight: 300),
                 width: double.infinity,
                 color: KTColors.lightBg,
-                child: Image.network(
-                  doc.fileUrl!,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 180,
-                    color: KTColors.lightBg,
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.broken_image_outlined, size: 48, color: KTColors.textMuted),
-                        SizedBox(height: 8),
-                        Text('Preview unavailable', style: TextStyle(color: KTColors.textMuted, fontSize: 13)),
-                      ],
-                    ),
-                  ),
-                ),
+                child: _buildImagePreview(doc.fileUrl!),
               )
             else
               Container(
@@ -580,6 +568,7 @@ class _DriverDocumentsScreenState extends ConsumerState<DriverDocumentsScreen> {
       ),
     );
   }
+
   Widget _detailRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),

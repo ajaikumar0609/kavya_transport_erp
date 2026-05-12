@@ -297,7 +297,14 @@ async def get_document(
     result = await db.execute(select(Document).where(Document.id == doc_id))
     doc = result.scalar_one_or_none()
     assert_tenant_access(doc, current_user, not_found_detail="Document not found")
-    return APIResponse(success=True, data={c.key: getattr(doc, c.key) for c in doc.__table__.columns})
+    row = {c.key: getattr(doc, c.key) for c in doc.__table__.columns}
+    if row.get('file_url'):
+        try:
+            from app.services.s3_service import presign_stored_url
+            row['file_url'] = await presign_stored_url(row['file_url'], expires_in=7200)
+        except Exception:
+            pass
+    return APIResponse(success=True, data=row)
 
 
 @router.post("/upload", response_model=APIResponse, status_code=201)

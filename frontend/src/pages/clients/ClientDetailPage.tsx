@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { clientService, jobService, documentService } from '@/services/dataService';
 import { StatusBadge, LoadingPage, Modal } from '@/components/common/Modal';
 import { SubmitButton } from '@/components/common/SubmitButton';
-import { ArrowLeft, Phone, Mail, MapPin, Edit, ChevronRight, Plus, Truck, User, Package, IndianRupee, Calendar, CheckCircle2, FileText, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Edit, ChevronRight, Plus, Truck, User, Package, IndianRupee, Calendar, CheckCircle2, FileText, ExternalLink, Upload, Eye, RefreshCw, X } from 'lucide-react';
 import { safeArray, openDocumentUrl } from '@/utils/helpers';
 import { handleApiError } from '../../utils/handleApiError';
 import api from '@/services/api';
@@ -191,6 +191,57 @@ export default function ClientDetailPage() {
     });
   }, [client]);
 
+  // ── Document upload state ──
+  const [showDocModal, setShowDocModal] = useState(false);
+  const [replacingDoc, setReplacingDoc] = useState<any>(null); // null = new upload, doc object = replace
+  const [docTitle, setDocTitle] = useState('');
+  const [docType, setDocType] = useState('other');
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openAddDoc = () => {
+    setReplacingDoc(null);
+    setDocTitle('');
+    setDocType('other');
+    setDocFile(null);
+    setShowDocModal(true);
+  };
+
+  const openReplaceDoc = (doc: any) => {
+    setReplacingDoc(doc);
+    setDocTitle(doc.title || doc.file_name || '');
+    setDocType(doc.document_type || 'other');
+    setDocFile(null);
+    setShowDocModal(true);
+  };
+
+  const handleDocUpload = async () => {
+    if (!docFile) { toast.error('Please select a file'); return; }
+    if (!docTitle.trim()) { toast.error('Please enter a document title'); return; }
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', docFile);
+      fd.append('title', docTitle.trim());
+      fd.append('document_type', docType);
+      fd.append('entity_type', 'client');
+      fd.append('entity_id', String(id));
+      if (replacingDoc) {
+        // Delete old then upload new
+        await documentService.delete(replacingDoc.id);
+      }
+      await documentService.uploadFile(fd);
+      qc.invalidateQueries({ queryKey: ['client-documents', id] });
+      toast.success(replacingDoc ? 'Document replaced successfully' : 'Document uploaded successfully');
+      setShowDocModal(false);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const resetModal = () => {
     setShowCreateJob(false);
     setStep(1);
@@ -319,31 +370,105 @@ export default function ClientDetailPage() {
         {docsLoading ? (
           <div className="py-6 text-center text-gray-400">Loading documents...</div>
         ) : clientDocuments.length === 0 ? (
-          <div className="py-6 text-center text-gray-400">No client documents uploaded yet.</div>
+          <div className="py-10 text-center">
+            <FileText size={36} className="mx-auto mb-2 text-gray-300" />
+            <p className="text-gray-500 text-sm">No documents uploaded yet.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {clientDocuments.map((doc: any) => (
               <div key={doc.id} className="border border-gray-200 rounded-lg p-3 bg-gray-50">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900 truncate flex items-center gap-2"><FileText size={14} /> {doc.title || doc.file_name || 'Document'}</p>
-                    <p className="text-xs text-gray-500 mt-1">Type: {show(doc.document_type)}</p>
-                    <p className="text-xs text-gray-500">Uploaded: {doc.created_at ? new Date(doc.created_at.endsWith('Z') || doc.created_at.includes('+') ? doc.created_at : doc.created_at + 'Z').toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : '—'}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-gray-900 truncate flex items-center gap-2">
+                      <FileText size={14} className="shrink-0" />
+                      {doc.title || doc.file_name || 'Document'}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">Type: {show(doc.document_type)}</p>
+                    <p className="text-xs text-gray-500">
+                      Uploaded: {doc.created_at
+                        ? new Date(doc.created_at.endsWith('Z') || doc.created_at.includes('+') ? doc.created_at : doc.created_at + 'Z')
+                            .toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })
+                        : '—'}
+                    </p>
                   </div>
-                  {doc.file_url && (
-                    <button type="button" onClick={() => openDocumentUrl(doc.file_url)} className="inline-flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm font-medium">
-                      View <ExternalLink size={14} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    {doc.file_url && (
+                      <button
+                        type="button"
+                        onClick={() => void openDocumentUrl(doc.file_url)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 text-xs font-medium"
+                        title="View document"
+                      >
+                        <Eye size={13} /> View
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openReplaceDoc(doc)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-white border border-gray-200 text-gray-700 hover:bg-gray-100 text-xs font-medium"
+                      title="Replace document"
+                    >
+                      <RefreshCw size={13} /> Replace
                     </button>
-                  )}
+                  </div>
                 </div>
-                {doc.file_url && /\.(jpg|jpeg|png|webp)$/i.test(doc.file_url) && (
-                  <img src={doc.file_url} alt={doc.title || 'client document'} className="mt-3 w-full h-36 object-cover rounded border border-gray-200" />
-                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Document Upload / Replace Modal */}
+      <Modal isOpen={showDocModal} onClose={() => setShowDocModal(false)} title={replacingDoc ? 'Replace Document' : 'Add Document'}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Document Title <span className="text-red-500">*</span></label>
+            <input
+              type="text"
+              value={docTitle}
+              onChange={e => setDocTitle(e.target.value)}
+              placeholder="e.g. GST Certificate, PAN Card"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">File <span className="text-red-500">*</span></label>
+            <div
+              className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-primary-400 transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {docFile ? (
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-700">
+                  <FileText size={16} className="text-primary-500" />
+                  <span className="truncate max-w-xs">{docFile.name}</span>
+                  <button type="button" onClick={e => { e.stopPropagation(); setDocFile(null); }} className="text-gray-400 hover:text-red-500">
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  <Upload size={20} className="mx-auto mb-1 text-gray-400" />
+                  Click to select a file (PDF, JPG, PNG)
+                </div>
+              )}
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={e => setDocFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={() => setShowDocModal(false)} className="btn-secondary flex-1" disabled={uploading}>
+              Cancel
+            </button>
+            <SubmitButton isLoading={uploading} label={replacingDoc ? 'Replace' : 'Upload'} onClick={handleDocUpload} className="flex-1" />
+          </div>
+        </div>
+      </Modal>
 
       {/* Jobs Table */}
       <div className="card">

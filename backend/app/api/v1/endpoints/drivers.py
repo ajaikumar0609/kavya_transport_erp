@@ -994,17 +994,61 @@ async def get_my_documents(
         raise HTTPException(status_code=404, detail="Driver profile not found")
     items = await _collect_driver_documents(db, driver.id)
 
+    # Presign S3 URLs so the mobile app can display images from the private bucket
+    from app.services.s3_service import presign_stored_url as _presign_url_base
+    for item in items:
+        raw_url = item.get("file_url")
+        if raw_url and not raw_url.startswith('data:'):
+            try:
+                presigned = await _presign_url_base(raw_url)
+                item["file_url"] = presigned if presigned else raw_url
+            except Exception as ex:
+                logger.warning(f"[me/documents] presign failed for {item.get('document_type')}: {ex}")
+
     # Also include documents stored directly on the User record (uploaded by fleet/HR)
+    _USER_DOC_FIELDS = {
+        "aadhaar_card":    "aadhaar_file_url",
+        "driving_license": "dl_file_url",
+        "pan_card":        "pan_file_url",
+        "bank_passbook":   "passbook_file_url",
+    }
     try:
         if driver.user_id:
             user_result = await db.execute(select(User).where(User.id == driver.user_id))
             user = user_result.scalar_one_or_none()
             if user:
+                from app.services.s3_service import presign_stored_url as _presign_url
                 from app.services import s3_service as _s3
 
-                async def _presign(url):
+                async def _migrate_data_url(data_url: str, doc_type: str) -> str:
+                    """Upload a base64 data: URL to S3, update the user record, return S3 URL."""
                     try:
-                        return await _s3.get_presigned_url(url) if url else None
+                        import base64 as _b64
+                        header, b64_data = data_url.split(',', 1)
+                        mime = 'image/png' if 'image/png' in header else 'image/jpeg'
+                        ext = '.png' if 'png' in mime else '.jpg'
+                        file_bytes = _b64.b64decode(b64_data)
+                        folder = f"driver-documents/{driver.id}"
+                        result = await _s3.upload_file(file_bytes, f"{doc_type}{ext}", folder, mime)
+                        new_url = result.get("url", "")
+                        if new_url and driver.user_id:
+                            user_field = _USER_DOC_FIELDS.get(doc_type)
+                            if user_field:
+                                setattr(user, user_field, new_url)
+                                await db.commit()
+                            logger.info(f"[me/documents] Migrated data: URL for {doc_type} → {new_url[:60]}")
+                        return new_url or data_url
+                    except Exception as mig_ex:
+                        logger.warning(f"[me/documents] data: URL migration failed for {doc_type}: {mig_ex}")
+                        return data_url
+
+                async def _resolve_url(url: str, doc_type: str) -> Optional[str]:
+                    if not url:
+                        return None
+                    if url.startswith('data:'):
+                        url = await _migrate_data_url(url, doc_type)
+                    try:
+                        return await _presign_url(url) or url
                     except Exception:
                         return url
 
@@ -1022,7 +1066,7 @@ async def get_my_documents(
                             "document_type": doc_type,
                             "document_number": None,
                             "file_name": file_name,
-                            "file_url": await _presign(file_url),
+                            "file_url": await _resolve_url(file_url, doc_type),
                             "is_verified": True,
                             "remarks": None,
                             "uploaded_at": None,
@@ -1042,7 +1086,7 @@ async def upload_my_document(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Upload a personal document (license, aadhaar, badge, medical cert)."""
-    ALLOWED_TYPES = ["driving_license", "aadhaar_card", "driver_badge", "medical_fitness"]
+    ALLOWED_TYPES = ["driving_license", "aadhaar_card", "driver_badge", "medical_fitness", "pan_card", "bank_passbook"]
     normalized_document_type = _normalize_driver_doc_type(document_type)
     if normalized_document_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail=f"Invalid document_type. Allowed: {ALLOWED_TYPES}")
@@ -1291,10 +1335,10 @@ async def get_driver(
         user_result = await db.execute(select(User).where(User.id == driver.user_id))
         user = user_result.scalar_one_or_none()
         if user:
-            from app.services import s3_service as _s3
+            from app.services.s3_service import presign_stored_url as _presign_url
 
             async def _presign(url):
-                return await _s3.get_presigned_url(url) if url else None
+                return await _presign_url(url) or None if url else None
 
             data["avatar_url"] = data.get("photo_url") or user.avatar_url
             data["aadhaar_file_url"] = await _presign(user.aadhaar_file_url)
@@ -1587,8 +1631,8 @@ async def get_driver_documents(
     extra_docs = await _collect_driver_documents(db, driver_id)
     for dd in extra_docs:
         raw_url = dd.get("file_url")
-        from app.services import s3_service as _s3
-        view_url = await _s3.get_presigned_url(raw_url) if raw_url else None
+        from app.services.s3_service import presign_stored_url as _presign_stored
+        view_url = await _presign_stored(raw_url) or None if raw_url else None
         docs.append({
             "id": dd.get("id"),
             "doc_type": dd.get("document_type"),
@@ -1626,6 +1670,7 @@ async def upload_driver_document_for_fleet(
     ALLOWED_TYPES = [
         "driving_license", "pan_card", "aadhaar_card",
         "bank_passbook", "driver_photo", "driver_fingerprint",
+        "driver_badge", "medical_fitness",
     ]
     document_type = document_type.lower().strip()
     if document_type not in ALLOWED_TYPES:

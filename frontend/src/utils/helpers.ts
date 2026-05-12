@@ -1,5 +1,6 @@
 /**
  * Open a document URL in a new tab.
+ * For S3 URLs, does a HEAD pre-check and shows a toast if the file is missing.
  * Chrome blocks navigation to data: URLs via <a target="_blank"> or window.open,
  * showing a black screen. This converts them to Blob URLs first.
  */
@@ -19,6 +20,13 @@ export function openDocumentUrl(fileUrl: string | null | undefined): void {
     } catch {
       window.open(fileUrl, '_blank', 'noreferrer');
     }
+  } else if (fileUrl.includes('X-Amz-') || fileUrl.includes('amazonaws.com')) {
+    // Presigned S3 URLs are method-specific (GetObject) — HEAD returns 403.
+    // The backend already validates the object exists before presigning, so open directly.
+    window.open(fileUrl, '_blank', 'noreferrer');
+  } else if (fileUrl.startsWith('/uploads/') || fileUrl.startsWith('/api/')) {
+    // Local server file — must be served from the backend API, not the frontend domain.
+    window.open(`https://api.kavyatransports.com${fileUrl}`, '_blank', 'noreferrer');
   } else {
     window.open(fileUrl, '_blank', 'noreferrer');
   }

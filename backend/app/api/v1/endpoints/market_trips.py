@@ -1,5 +1,6 @@
 # Market Trip Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from sqlalchemy import select as _sql_select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
@@ -8,6 +9,7 @@ from app.core.security import TokenData, get_current_user
 from app.schemas.base import APIResponse, PaginationMeta
 from app.schemas.market_trip import MarketTripCreate, MarketTripUpdate, MarketTripAssign, MarketTripSettle
 from app.services import market_trip_service
+from app.models.postgres.lr import LR
 
 router = APIRouter()
 
@@ -22,11 +24,34 @@ async def list_market_trips(
 ):
     trips, total = await market_trip_service.list_market_trips(db, page, limit, search, status, supplier_id)
     pages = (total + limit - 1) // limit
+    from app.services.s3_service import presign_stored_url
+    # Bulk-fetch origin/destination from linked LRs
+    job_ids = [t.job_id for t in trips if t.job_id]
+    lr_route_map: dict = {}
+    if job_ids:
+        lr_rows = await db.execute(
+            _sql_select(LR.job_id, LR.origin, LR.destination)
+            .where(LR.job_id.in_(job_ids), LR.is_deleted == False)
+            .order_by(LR.id)
+        )
+        for row in lr_rows:
+            if row.job_id not in lr_route_map:
+                lr_route_map[row.job_id] = (row.origin, row.destination)
     items = []
     for t in trips:
         row = {c.key: getattr(t, c.key) for c in t.__table__.columns}
         row["margin"] = t.margin
         row["margin_pct"] = round(t.margin_pct, 2)
+        if t.job_id and t.job_id in lr_route_map:
+            row["origin"], row["destination"] = lr_route_map[t.job_id]
+        if row.get("pod_file_url"):
+            try:
+                pod_url = row["pod_file_url"]
+                if pod_url.startswith("/uploads/") or pod_url.startswith("/api/"):
+                    pod_url = "https://api.kavyatransports.com" + pod_url
+                row["pod_file_url"] = await presign_stored_url(pod_url, expires_in=7200) or pod_url
+            except Exception:
+                pass
         items.append(row)
     return APIResponse(
         success=True, data=items,
@@ -46,6 +71,15 @@ async def get_market_trip(
     data = {c.key: getattr(trip, c.key) for c in trip.__table__.columns}
     data["margin"] = trip.margin
     data["margin_pct"] = round(trip.margin_pct, 2)
+    if data.get("pod_file_url"):
+        try:
+            from app.services.s3_service import presign_stored_url
+            pod_url = data["pod_file_url"]
+            if pod_url.startswith("/uploads/") or pod_url.startswith("/api/"):
+                pod_url = "https://api.kavyatransports.com" + pod_url
+            data["pod_file_url"] = await presign_stored_url(pod_url, expires_in=7200) or pod_url
+        except Exception:
+            pass
     return APIResponse(success=True, data=data)
 
 
@@ -302,6 +336,16 @@ async def upload_pod(
     trip.pod_file_url = url
     trip.pod_uploaded = True
     trip.pod_uploaded_at = datetime.utcnow()
+
+    # Also mark all LRs for the same job as pod_uploaded so LR list shows "Uploaded"
+    if trip.job_id:
+        from app.models.postgres.lr import LR
+        lr_result = await db.execute(select(LR).where(LR.job_id == trip.job_id))
+        for lr in lr_result.scalars().all():
+            lr.pod_uploaded = True
+            if not lr.pod_file_url:
+                lr.pod_file_url = url
+
     await db.commit()
 
     return APIResponse(success=True, data={"url": url}, message="POD uploaded")

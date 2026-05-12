@@ -251,12 +251,12 @@ async def list_users(
             "dl_expiry_date": str(u.dl_expiry_date) if u.dl_expiry_date else None,
         })
     # presign document URLs
-    from app.services import s3_service as _s3
+    from app.services.s3_service import presign_stored_url as _presign
     _doc_url_keys = ["aadhaar_file_url", "pan_file_url", "passbook_file_url", "dl_file_url"]
     for item in items:
         for key in _doc_url_keys:
             if item.get(key):
-                item[key] = await _s3.get_presigned_url(item[key])
+                item[key] = await _presign(item[key]) or None
     return APIResponse(success=True, data=items, pagination=PaginationMeta(page=page, limit=limit, total=total, pages=pages))
 
 
@@ -293,10 +293,10 @@ async def get_user(user_id: int, db: AsyncSession = Depends(get_db), current_use
         "dl_issue_date": str(user.dl_issue_date) if user.dl_issue_date else None,
         "dl_expiry_date": str(user.dl_expiry_date) if user.dl_expiry_date else None,
     }
-    from app.services import s3_service as _s3
+    from app.services.s3_service import presign_stored_url as _presign
     for key in ["aadhaar_file_url", "pan_file_url", "passbook_file_url", "dl_file_url"]:
         raw = getattr(user, key, None)
-        data[key] = await _s3.get_presigned_url(raw) if raw else None
+        data[key] = await _presign(raw) or None if raw else None
     return APIResponse(success=True, data=data)
 
 
@@ -473,7 +473,8 @@ async def upload_user_document(
     await db.commit()
 
     # Return a presigned URL so the frontend can display it immediately
-    view_url = await s3_service.get_presigned_url(file_url) if file_url else file_url
+    from app.services.s3_service import presign_stored_url as _presign
+    view_url = await _presign(file_url) or file_url if file_url else file_url
 
     return APIResponse(
         success=True,

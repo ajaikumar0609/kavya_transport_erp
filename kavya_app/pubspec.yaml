@@ -1,7 +1,7 @@
 name: kavya_app
 description: "Kavya Transports ERP - Fleet management, trip tracking, and logistics for transport companies."
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.9.2

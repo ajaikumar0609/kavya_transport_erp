@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { tripService } from '@/services/dataService';
+import { tripService, marketTripService } from '@/services/dataService';
 import api from '@/services/api';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import DataTable, { Column } from '@/components/common/DataTable';
@@ -40,7 +40,7 @@ export default function TripsPage() {
   const qc = useQueryClient();
   const { hasPermission } = useAuthStore();
   const [filters, setFilters] = useState<FilterParams>({ page: 1, page_size: 20 });
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [tripTypeTab, setTripTypeTab] = useState<string>('all');
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editItem, setEditItem] = useState<Trip | null>(null);
   const [editForm, setEditForm] = useState({
@@ -51,8 +51,16 @@ export default function TripsPage() {
   });
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['trips', filters, statusFilter],
-    queryFn: () => tripService.list({ ...filters, status: statusFilter !== 'all' ? statusFilter : undefined }),
+    queryKey: ['trips', filters, tripTypeTab],
+    queryFn: () => tripService.list({ ...filters }),
+    enabled: tripTypeTab !== 'market',
+    throwOnError: false,
+  });
+
+  const { data: marketData, isLoading: marketLoading, refetch: marketRefetch } = useQuery({
+    queryKey: ['market-trips-all', filters, tripTypeTab],
+    queryFn: () => marketTripService.list({ page: filters.page, limit: filters.page_size, search: (filters as any).search } as any),
+    enabled: tripTypeTab !== 'fleet',
     throwOnError: false,
   });
 
@@ -134,9 +142,22 @@ export default function TripsPage() {
   const columns: Column<Trip>[] = [
     {
       key: 'trip_number',
-      header: 'Trip No.',
+      header: 'Type / Trip No.',
       sortable: true,
-      render: (t) => <span className="font-mono text-sm font-medium text-primary-600">{t.trip_number}</span>,
+      render: (t) => (
+        <div className="flex items-center gap-2">
+          {(t as any)._kind === 'market' ? (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-orange-100 text-orange-700 uppercase tracking-wide">Market</span>
+          ) : (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 uppercase tracking-wide">Fleet</span>
+          )}
+          <span className="font-mono text-sm font-medium text-primary-600">
+            {(t as any)._kind === 'market'
+              ? ((t as any).job_id ? `Job #${(t as any).job_id}` : `#${t.id}`)
+              : (t.trip_number || `#${t.id}`)}
+          </span>
+        </div>
+      ),
     },
     {
       key: 'vehicle',
@@ -156,20 +177,26 @@ export default function TripsPage() {
     {
       key: 'route',
       header: 'Route',
-      render: (t) => (
-        <div className="flex items-center gap-1 text-sm">
-          <MapPin size={14} className="text-green-500" />
-          <span>{t.origin}</span>
-          <span className="text-gray-300">→</span>
-          <MapPin size={14} className="text-red-500" />
-          <span>{t.destination}</span>
-        </div>
-      ),
+      render: (t) => {
+        const origin = (t as any).origin || '';
+        const destination = (t as any).destination || '';
+        if (!origin && !destination) return <span className="text-gray-400">—</span>;
+        return (
+          <div className="flex items-center gap-1 text-sm">
+            <MapPin size={14} className="text-green-500 shrink-0" />
+            <span>{origin || '—'}</span>
+            <span className="text-gray-300">→</span>
+            <MapPin size={14} className="text-red-500 shrink-0" />
+            <span>{destination || '—'}</span>
+          </div>
+        );
+      },
     },
     {
       key: 'planned_start',
       header: 'Start Date',
       sortable: true,
+      hidden: tripTypeTab === 'market',
       render: (t) => {
         const d = (t as any).actual_start || t.planned_start;
         if (!d) return <span className="text-gray-400">—</span>;
@@ -180,6 +207,7 @@ export default function TripsPage() {
       key: 'total_distance',
       header: 'Distance',
       sortable: true,
+      hidden: tripTypeTab === 'market',
       render: (t) => {
         const dist = (t as any).total_distance || (t as any).actual_distance_km || (t as any).planned_distance_km;
         return dist ? `${dist} km` : '—';
@@ -188,12 +216,29 @@ export default function TripsPage() {
     {
       key: 'total_expenses',
       header: 'Expenses',
+      hidden: tripTypeTab === 'market',
       render: (t) => (t as any).total_expenses ? `₹${Number((t as any).total_expenses).toLocaleString('en-IN')}` : '—',
     },
     {
       key: 'status',
       header: 'Status',
       render: (t) => {
+        if ((t as any)._kind === 'market') {
+          if ((t as any).pod_uploaded) {
+            return <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-green-50 text-green-700"><span className="w-1.5 h-1.5 rounded-full bg-green-500" />Completed</span>;
+          }
+          const mStatus = ((t as any).status || '').toLowerCase();
+          const mMap: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+            pending:    { bg: 'bg-gray-50',   text: 'text-gray-600',   dot: 'bg-gray-400',   label: 'Pending' },
+            assigned:   { bg: 'bg-blue-50',   text: 'text-blue-700',   dot: 'bg-blue-500',   label: 'Assigned' },
+            in_transit: { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500', label: 'In Transit' },
+            delivered:  { bg: 'bg-green-50',  text: 'text-green-700',  dot: 'bg-green-500',  label: 'Completed' },
+            settled:    { bg: 'bg-teal-50',   text: 'text-teal-700',   dot: 'bg-teal-500',   label: 'Settled' },
+            cancelled:  { bg: 'bg-red-50',    text: 'text-red-700',    dot: 'bg-red-500',    label: 'Cancelled' },
+          };
+          const m = mMap[mStatus] || { bg: 'bg-gray-50', text: 'text-gray-600', dot: 'bg-gray-400', label: mStatus.replace('_', ' ') };
+          return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${m.bg} ${m.text}`}><span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />{m.label}</span>;
+        }
         const normalized = normalizeTripStatus(t.status);
         const color = TRIP_STATUS_COLORS[normalized] || 'bg-gray-100 text-gray-700';
         return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${color}`}>{normalized.replace('_', ' ')}</span>;
@@ -202,53 +247,63 @@ export default function TripsPage() {
     {
       key: 'actions',
       header: 'Actions',
+      hidden: tripTypeTab === 'market',
       render: (t) => (
         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(t);
-            }}
-            className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Edit"
-          >
-            <Pencil size={14} className="text-gray-600" />
-          </button>
+          {(t as any)._kind !== 'market' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleEdit(t);
+              }}
+              className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+              title="Edit"
+            >
+              <Pencil size={14} className="text-gray-600" />
+            </button>
+          )}
 
-          {normalizeTripStatus(t.status) === 'IN_TRANSIT' && (
+          {(t as any)._kind !== 'market' && normalizeTripStatus(t.status) === 'IN_TRANSIT' && (
             <button type="button" onClick={() => updateTripStatus(String(t.id), 'reach')} className="text-xs px-2 py-1 bg-orange-600 text-white rounded-full" title="Mark Reached">
               Mark Reached
             </button>
           )}
-          {normalizeTripStatus(t.status) === 'REACHED_DESTINATION' && (
+          {(t as any)._kind !== 'market' && normalizeTripStatus(t.status) === 'REACHED_DESTINATION' && (
             <button type="button" onClick={() => updateTripStatus(String(t.id), 'close')} className="text-xs px-2 py-1 bg-purple-600 text-white rounded-full" title="Close Trip">
               Close Trip
             </button>
           )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete(t);
-            }}
-            className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-            title="Delete"
-          >
-            <Trash2 size={14} className="text-red-600" />
-          </button>
+          {(t as any)._kind !== 'market' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(t);
+              }}
+              className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+              title="Delete"
+            >
+              <Trash2 size={14} className="text-red-600" />
+            </button>
+          )}
         </div>
       ),
     },
   ];
 
-  const statusTabs = [
+  const typeTabs = [
     { key: 'all', label: 'All' },
-    { key: 'pending', label: 'Pending' },
-    { key: 'completed', label: 'Completed' },
+    { key: 'fleet', label: 'Fleet Trip' },
+    { key: 'market', label: 'Market Trip' },
   ];
 
-  const rows = safeArray<Trip>(data);
+  const fleetRows = safeArray<Trip>(data).map((t) => ({ ...t, _kind: 'fleet' }));
+  const marketRows = safeArray<Trip>((marketData as any)?.data ?? marketData).map((t: any) => ({ ...t, _kind: 'market' }));
+  const rows: Trip[] =
+    tripTypeTab === 'fleet' ? fleetRows :
+    tripTypeTab === 'market' ? marketRows :
+    [...fleetRows, ...marketRows];
 
   const handleExportPdf = () => {
     exportTableToPdf({
@@ -277,24 +332,24 @@ export default function TripsPage() {
       </div></div>
 
       <TabPills
-        tabs={statusTabs}
-        activeTab={statusFilter}
-        onChange={(key) => { setStatusFilter(key); setFilters({ ...filters, page: 1 }); }}
+        tabs={typeTabs}
+        activeTab={tripTypeTab}
+        onChange={(key) => { setTripTypeTab(key); setFilters({ ...filters, page: 1 }); }}
       />
 
       <DataTable
         columns={columns}
         data={rows}
-        total={data?.total || 0}
+        total={tripTypeTab === 'fleet' ? (data?.total || 0) : tripTypeTab === 'market' ? ((marketData as any)?.pagination?.total || marketRows.length) : (fleetRows.length + marketRows.length)}
         page={filters.page}
         pageSize={filters.page_size}
-        isLoading={isLoading}
+        isLoading={isLoading || marketLoading}
         searchPlaceholder="Search trips..."
         onSearch={(q) => setFilters({ ...filters, search: q, page: 1 })}
         onPageChange={(p) => setFilters({ ...filters, page: p })}
         onSort={(key, order) => setFilters({ ...filters, sort_by: key, sort_order: order })}
-        onRowClick={(t) => navigate(`/trips/${t.id}`)}
-        onRefresh={() => refetch()}
+        onRowClick={(t) => (t as any)._kind === 'market' ? navigate(`/market-trips/${t.id}`) : navigate(`/trips/${t.id}`)}
+        onRefresh={() => { void refetch(); void marketRefetch(); }}
         onExport={handleExportPdf}
       />
 

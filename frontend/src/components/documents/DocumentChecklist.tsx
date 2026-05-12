@@ -174,7 +174,7 @@ function DocumentCard({
           {status !== 'missing' && fileUrl && (
             <button
               type="button"
-              onClick={() => openDocumentUrl(resolveFileUrl(fileUrl))}
+              onClick={() => void openDocumentUrl(resolveFileUrl(fileUrl))}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors text-blue-600"
             >
               <Eye size={12} />

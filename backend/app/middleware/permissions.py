@@ -169,6 +169,12 @@ class Permissions:
     # Sync
     SYNC_CREATE = "sync:create"
 
+    # Attendance
+    ATTENDANCE_CREATE = "attendance:create"
+    ATTENDANCE_READ = "attendance:read"
+    ATTENDANCE_UPDATE = "attendance:update"
+    ATTENDANCE_DELETE = "attendance:delete"
+
 # Role-Permission Mapping
 ROLE_PERMISSIONS = {
     "admin": [

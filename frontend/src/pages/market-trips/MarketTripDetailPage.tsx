@@ -11,7 +11,7 @@ import { openDocumentUrl } from '@/utils/helpers';
 import {
   ArrowLeft, Truck, User, IndianRupee,
   CheckCircle, XCircle, Play, PackageCheck, CreditCard,
-  FileText, X, ExternalLink, Building2, Upload
+  FileText, X, ExternalLink, Building2, Upload, Printer
 } from 'lucide-react';
 
 export default function MarketTripDetailPage() {
@@ -115,6 +115,20 @@ export default function MarketTripDetailPage() {
   const firstLR: any = lrs[0] ?? null;
   const margin = Number(t.client_rate || 0) - Number(t.contractor_rate || 0);
 
+  const handlePrint = async () => {
+    if (!firstLR?.id) { toast.error('No LR linked to this market trip'); return; }
+    try {
+      const printData = await lrService.print(firstLR.id);
+      const printWindow = window.open('', '_blank', 'width=800,height=1100');
+      if (!printWindow) { toast.error('Pop-up blocked — allow pop-ups and try again'); return; }
+      printWindow.document.write(generateLRPrintHTML(printData));
+      printWindow.document.close();
+      setTimeout(() => printWindow.print(), 500);
+    } catch {
+      toast.error('Failed to load print data');
+    }
+  };
+
   // Document chip — image thumbnail or PDF icon, opens lightbox
   const DocChip = ({ url, label }: { url: string; label: string }) => {
     const isImg = /\.(jpe?g|png|gif|webp|heic)$/i.test(url);
@@ -203,6 +217,12 @@ export default function MarketTripDetailPage() {
               <XCircle size={16} /> Cancel
             </button>
           )}
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border border-gray-300 text-gray-700 hover:bg-gray-50 text-sm font-medium"
+          >
+            <Printer size={16} /> Print LR
+          </button>
         </div>
       </div>
 
@@ -275,17 +295,13 @@ export default function MarketTripDetailPage() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setViewDoc({ url: t.pod_file_url, title: `POD — Market Trip #${t.id}` })}
+                    onClick={() => void openDocumentUrl(t.pod_file_url)}
                     className="w-full mt-1 rounded-lg overflow-hidden border border-green-200 hover:border-green-400 transition-colors group relative"
                   >
-                    {/\.(jpe?g|png|gif|webp|heic)$/i.test(t.pod_file_url) ? (
-                      <img src={t.pod_file_url} alt="POD" className="w-full h-36 object-cover group-hover:opacity-90 transition-opacity" />
-                    ) : (
-                      <div className="w-full h-20 flex flex-col items-center justify-center bg-green-50 gap-1">
-                        <FileText size={28} className="text-green-400" />
-                        <span className="text-xs text-green-600">View POD Document</span>
-                      </div>
-                    )}
+                    <div className="w-full h-20 flex flex-col items-center justify-center bg-green-50 gap-1">
+                      <FileText size={28} className="text-green-400" />
+                      <span className="text-xs text-green-600">View POD Document</span>
+                    </div>
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/30 transition-opacity rounded-lg">
                       <span className="text-white text-xs font-medium bg-black/50 px-2 py-1 rounded">Click to view</span>
                     </div>
@@ -480,4 +496,106 @@ export default function MarketTripDetailPage() {
       />
     </div>
   );
+}
+
+function generateLRPrintHTML(data: any): string {
+  const items = data.items || [];
+  const itemRows = items.map((item: any, idx: number) => `
+    <tr>
+      <td style="border:1px solid #ccc;padding:6px;text-align:center">${idx + 1}</td>
+      <td style="border:1px solid #ccc;padding:6px">${item.description || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px;text-align:center">${item.packages || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px;text-align:center">${item.package_type || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px;text-align:right">${item.actual_weight || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px;text-align:right">${item.charged_weight || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px">${item.invoice_number || ''}</td>
+      <td style="border:1px solid #ccc;padding:6px;text-align:right">${item.invoice_value ? '₹' + Number(item.invoice_value ?? 0).toLocaleString('en-IN') : ''}</td>
+    </tr>
+  `).join('');
+  const terms = (data.terms || []).map((t: string) => `<li style="margin-bottom:4px">${t}</li>`).join('');
+  return `<!DOCTYPE html><html><head><title>Lorry Receipt - ${data.lr_number || ''}</title>
+  <style>
+    body{font-family:'Segoe UI',Arial,sans-serif;margin:0;padding:20px;font-size:13px;color:#333}
+    .header{text-align:center;border-bottom:3px double #333;padding-bottom:15px;margin-bottom:15px}
+    .header h1{margin:0;font-size:22px;letter-spacing:2px}
+    .header p{margin:3px 0;font-size:12px;color:#666}
+    .lr-number{font-size:16px;font-weight:bold;color:#1a56db}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px}
+    .box{border:1px solid #ccc;border-radius:4px;padding:12px}
+    .box h3{margin:0 0 8px 0;font-size:13px;color:#666;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #eee;padding-bottom:5px}
+    .box p{margin:3px 0}.box .label{color:#888;font-size:11px}.box .value{font-weight:600}
+    table{width:100%;border-collapse:collapse;margin:15px 0}
+    th{background:#f5f5f5;border:1px solid #ccc;padding:8px;font-size:11px;text-transform:uppercase}
+    .summary{text-align:right;margin-top:10px}.summary td{padding:4px 10px}
+    .total-row{font-size:16px;font-weight:bold;border-top:2px solid #333}
+    .terms{font-size:11px;color:#666;margin-top:20px}
+    .signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:50px;text-align:center}
+    .signatures div{border-top:1px solid #999;padding-top:8px;font-size:12px}
+    @media print{body{margin:0;padding:10px}}
+  </style></head><body>
+  <div class="header">
+    <h1>${data.company_name || 'TRANSPORT ERP'}</h1>
+    <p>${data.company_address || ''}</p>
+    <p>GSTIN: ${data.company_gstin || ''} | Phone: ${data.company_phone || ''}</p>
+    <div style="margin-top:10px"><span style="font-size:18px;font-weight:bold;letter-spacing:3px">LORRY RECEIPT / CONSIGNMENT NOTE</span></div>
+  </div>
+  <div class="grid-2">
+    <div>
+      <span class="lr-number">${data.lr_number || ''}</span>
+      <p><span class="label">Date:</span> <span class="value">${data.lr_date || ''}</span></p>
+      <p><span class="label">Job Ref:</span> <span class="value">${data.job_number || ''}</span></p>
+    </div>
+    <div style="text-align:right">
+      <p><span class="label">Vehicle No:</span> <span class="value">${data.vehicle_number || 'N/A'}</span></p>
+      <p><span class="label">Driver:</span> <span class="value">${data.driver_name || 'N/A'}</span></p>
+      <p><span class="label">E-way Bill:</span> <span class="value">${data.eway_bill_number || 'N/A'}</span></p>
+    </div>
+  </div>
+  <div class="grid-2">
+    <div class="box">
+      <h3>Consignor (From)</h3>
+      <p class="value">${data.consignor_name || ''}</p>
+      <p>${data.consignor_address || ''}</p>
+      <p><span class="label">GSTIN:</span> ${data.consignor_gstin || 'N/A'}</p>
+      <p><span class="label">Phone:</span> ${data.consignor_phone || 'N/A'}</p>
+      <p><span class="label">Origin:</span> ${data.origin || ''}, ${data.origin_state || ''}</p>
+    </div>
+    <div class="box">
+      <h3>Consignee (To)</h3>
+      <p class="value">${data.consignee_name || ''}</p>
+      <p>${data.consignee_address || ''}</p>
+      <p><span class="label">GSTIN:</span> ${data.consignee_gstin || 'N/A'}</p>
+      <p><span class="label">Phone:</span> ${data.consignee_phone || 'N/A'}</p>
+      <p><span class="label">Destination:</span> ${data.destination || ''}, ${data.destination_state || ''}</p>
+    </div>
+  </div>
+  <table><thead><tr>
+    <th style="width:40px">S.No</th><th>Description</th><th style="width:60px">Pkgs</th>
+    <th style="width:80px">Type</th><th style="width:90px">Act. Wt (Kg)</th>
+    <th style="width:90px">Chg. Wt (Kg)</th><th style="width:100px">Invoice No.</th><th style="width:100px">Invoice Value</th>
+  </tr></thead><tbody>
+    ${itemRows || '<tr><td colspan="8" style="text-align:center;padding:20px;color:#999">No items</td></tr>'}
+  </tbody></table>
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:20px">
+    <div>
+      <p><span class="label">Payment Mode:</span> <span class="value" style="text-transform:uppercase">${(data.payment_mode || '').replace(/_/g,' ')}</span></p>
+      ${data.remarks ? `<p><span class="label">Remarks:</span> ${data.remarks}</p>` : ''}
+      ${data.insurance_company ? `<p><span class="label">Insurance:</span> ${data.insurance_company} (₹${Number(data.insurance_amount ?? 0).toLocaleString('en-IN')})</p>` : ''}
+      ${data.declared_value ? `<p><span class="label">Declared Value:</span> ₹${Number(data.declared_value ?? 0).toLocaleString('en-IN')}</p>` : ''}
+    </div>
+    <table class="summary">
+      <tr><td class="label">Freight:</td><td>₹${Number(data.freight_amount ?? 0).toLocaleString('en-IN')}</td></tr>
+      ${data.loading_charges ? `<tr><td class="label">Loading:</td><td>₹${Number(data.loading_charges ?? 0).toLocaleString('en-IN')}</td></tr>` : ''}
+      ${data.unloading_charges ? `<tr><td class="label">Unloading:</td><td>₹${Number(data.unloading_charges ?? 0).toLocaleString('en-IN')}</td></tr>` : ''}
+      ${data.detention_charges ? `<tr><td class="label">Detention:</td><td>₹${Number(data.detention_charges ?? 0).toLocaleString('en-IN')}</td></tr>` : ''}
+      ${data.other_charges ? `<tr><td class="label">Other:</td><td>₹${Number(data.other_charges ?? 0).toLocaleString('en-IN')}</td></tr>` : ''}
+      <tr><td class="label" style="border-top:1px solid #ccc;padding-top:6px"><strong>Subtotal:</strong></td><td style="border-top:1px solid #ccc;padding-top:6px"><strong>₹${Number(data.subtotal ?? 0).toLocaleString('en-IN')}</strong></td></tr>
+      <tr><td class="label">GST (${data.gst_percentage || 5}%):</td><td>₹${Number(data.gst_amount ?? 0).toLocaleString('en-IN',{minimumFractionDigits:2})}</td></tr>
+      <tr class="total-row"><td style="padding-top:8px"><strong>TOTAL:</strong></td><td style="padding-top:8px"><strong>₹${Number(data.total_amount ?? 0).toLocaleString('en-IN',{minimumFractionDigits:2})}</strong></td></tr>
+    </table>
+  </div>
+  <div class="terms"><strong>Terms &amp; Conditions:</strong><ol style="padding-left:18px;margin-top:5px">${terms}</ol></div>
+  <div class="signatures"><div>Consignor's Signature</div><div>Transport Company</div><div>Consignee's Signature</div></div>
+  <p style="text-align:center;font-size:10px;color:#999;margin-top:30px">Computer-generated document. Printed on ${new Date().toLocaleString('en-IN')}</p>
+</body></html>`;
 }
