@@ -33,7 +33,7 @@ import logging
 from datetime import datetime
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
@@ -178,9 +178,12 @@ def _safe_float_or_none(val) -> float | None:
 async def ingest_ktt_positions(positions: list[dict]) -> dict:
     """
     Process parsed KTT positions:
-      1. Update Vehicle GPS coords in PostgreSQL
-      2. Store telemetry in MongoDB
-      3. Broadcast via WebSocket
+      1. Auto-upsert any vehicle not yet in the DB (INSERT … ON CONFLICT DO UPDATE)
+         — the KTT API packet itself provides reg number + device ID, no seed script needed
+      2. Update Vehicle current GPS coords in PostgreSQL
+      3. Upsert position into gps_locations table (INSERT … ON CONFLICT DO UPDATE)
+      4. Store telemetry in MongoDB
+      5. Broadcast via WebSocket
 
     Returns summary dict with counts.
     """
@@ -193,6 +196,40 @@ async def ingest_ktt_positions(positions: list[dict]) -> dict:
 
     AsyncSessionLocal = _make_session()
     async with AsyncSessionLocal() as db:
+
+        # ── 1. Auto-upsert all vehicles returned by this poll ──────────────────
+        # Uses data the API gave us directly (reg number + ktt device id).
+        # No seed script required — first poll on a fresh DB creates all vehicles.
+        for pos in positions:
+            reg = pos["registration_number"]
+            ktt_id = str(pos.get("ktt_device_id") or "")
+            await db.execute(
+                text("""
+                    INSERT INTO vehicles (
+                        registration_number, vehicle_type, ownership_type,
+                        status, fuel_type, gps_provider, gps_provider_status,
+                        gps_device_id, owner_name,
+                        created_at, updated_at, is_deleted
+                    ) VALUES (
+                        :reg, 'TRUCK', 'OWNED',
+                        'AVAILABLE', 'diesel', 'ktt', 'active',
+                        :ktt_id, 'Kavya Transports',
+                        NOW(), NOW(), false
+                    )
+                    ON CONFLICT (registration_number) DO UPDATE SET
+                        gps_provider        = 'ktt',
+                        gps_provider_status = 'active',
+                        gps_device_id       = CASE
+                            WHEN EXCLUDED.gps_device_id <> '' THEN EXCLUDED.gps_device_id
+                            ELSE vehicles.gps_device_id
+                        END,
+                        updated_at          = NOW()
+                """),
+                {"reg": reg, "ktt_id": ktt_id},
+            )
+        await db.commit()
+
+        # ── 2. Reload vehicle id map after upsert ──────────────────────────────
         all_vehicles = await db.execute(
             select(Vehicle.id, Vehicle.registration_number)
             .where(Vehicle.is_deleted == False)
@@ -202,18 +239,16 @@ async def ingest_ktt_positions(positions: list[dict]) -> dict:
             for row in all_vehicles.all()
         }
 
+        # ── 3. Ingest each position ─────────────────────────────────────────────
         for pos in positions:
             try:
                 vehicle_id = reg_to_vehicle.get(pos["registration_number"])
                 if not vehicle_id:
-                    logger.debug(
-                        "[KTT] Vehicle %s not in DB — skipping",
-                        pos["registration_number"],
-                    )
+                    logger.warning("[KTT] Vehicle %s still missing after upsert", pos["registration_number"])
                     skipped += 1
                     continue
 
-                # ── 1. Update PostgreSQL Vehicle row ──
+                # 3a. Update current position on the Vehicle row
                 update_values: dict = {
                     "last_speed": pos["speed"],
                     "last_ignition_on": pos["ignition_on"],
@@ -227,15 +262,51 @@ async def ingest_ktt_positions(positions: list[dict]) -> dict:
                         f"{pos['latitude']:.6f}, {pos['longitude']:.6f}"
                     )
                 await db.execute(
-                    update(Vehicle)
-                    .where(Vehicle.id == vehicle_id)
-                    .values(**update_values)
+                    update(Vehicle).where(Vehicle.id == vehicle_id).values(**update_values)
                 )
 
-                # ── 2. Store in MongoDB ──
+                # 3b. Upsert into gps_locations
+                # KTT does not provide odometer or battery_voltage — stored as NULL
+                if pos["latitude"] is not None and pos["longitude"] is not None:
+                    await db.execute(
+                        text("""
+                            INSERT INTO gps_locations (
+                                vehicle_id, registration_number,
+                                latitude, longitude,
+                                speed, heading,
+                                ignition_on,
+                                source, recorded_at
+                            ) VALUES (
+                                :vehicle_id, :reg,
+                                :lat, :lon,
+                                :speed, :heading,
+                                :ignition_on,
+                                'ktt', :recorded_at
+                            )
+                            ON CONFLICT (registration_number, recorded_at) DO UPDATE SET
+                                vehicle_id  = EXCLUDED.vehicle_id,
+                                latitude    = EXCLUDED.latitude,
+                                longitude   = EXCLUDED.longitude,
+                                speed       = EXCLUDED.speed,
+                                heading     = EXCLUDED.heading,
+                                ignition_on = EXCLUDED.ignition_on
+                        """),
+                        {
+                            "vehicle_id":  vehicle_id,
+                            "reg":         pos["registration_number"],
+                            "lat":         pos["latitude"],
+                            "lon":         pos["longitude"],
+                            "speed":       pos["speed"],
+                            "heading":     pos["heading"],
+                            "ignition_on": pos["ignition_on"],
+                            "recorded_at": pos["timestamp"],
+                        },
+                    )
+
+                # 3c. Store in MongoDB (best-effort)
                 await _store_telemetry_mongo(vehicle_id, pos)
 
-                # ── 3. Broadcast via WebSocket ──
+                # 3d. Broadcast via WebSocket (best-effort)
                 await _broadcast_position(vehicle_id, pos)
 
                 updated += 1

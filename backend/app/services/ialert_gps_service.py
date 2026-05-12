@@ -1,13 +1,12 @@
 """
 Ashok Leyland iALERT — Data as a Service (DaaS) GPS Integration
 ================================================================
-Polls the iALERT REST API to fetch real-time GPS telemetry for
-Ashok Leyland vehicles and ingests the data into our tracking pipeline.
+Polls the iALERT REST API (ialertelite) for real-time GPS telemetry.
 
 API Spec (v1.1.1):
-  URL:    https://ialert2.ashokleyland.com/ialert/daas/api/getdata?token=<TOKEN>
-  Auth:   Token as query parameter (IP-whitelisted)
-  Format: JSON array of vehicle packets
+  URL:    https://ialertelite.ashokleyland.com/ialert/daas/api/getdata?token=<TOKEN>
+  Auth:   JWT token as query parameter (IP-whitelisted)
+  Format: JSON object or array of vehicle packets
 
 Packet fields:
   vehicleregnumber  — e.g. "TN-72-CE-8913" (with dashes)
@@ -21,9 +20,11 @@ Packet fields:
 This service:
   1. Polls the iALERT API at configurable intervals
   2. Normalises field names and registration numbers
-  3. Updates Vehicle GPS coords in PostgreSQL
-  4. Stores telemetry points in MongoDB (vehicle_telemetry + trip_tracking)
-  5. Broadcasts position updates via WebSocket to subscribed clients
+  3. Auto-upserts unknown vehicles into the vehicles table (INSERT … ON CONFLICT)
+  4. Updates current GPS coords on the Vehicle row
+  5. Upserts each position into the gps_locations table (INSERT … ON CONFLICT)
+  6. Stores telemetry points in MongoDB (vehicle_telemetry + trip_tracking)
+  7. Broadcasts position updates via WebSocket to subscribed clients
 """
 
 import re
@@ -32,7 +33,7 @@ from datetime import datetime
 from typing import Optional
 
 import httpx
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
@@ -42,11 +43,37 @@ from app.db.mongodb.connection import MongoDB
 from app.models.postgres.vehicle import Vehicle
 from app.models.postgres.trip import Trip, TripStatusEnum
 
+# ── Roster of known iALERT vehicles (reg → VIN) ─────────────────
+# Used to populate chassis_number on auto-upsert.
+IALERT_VEHICLE_ROSTER: dict[str, str] = {
+    "TN72CE8913": "MB1A5PCD0RELN5126",
+    "TN72CE8939": "MB1A5PCDXREJN9162",
+    "TN72CE9420": "MB1A5PCD5REGP3679",
+    "TN72CE9435": "MB1A5PCDXREGP3676",
+    "TN72CE9469": "MB1A5PCD3REGP3678",
+    "TN72CE9474": "MB1A5PCD8REJN9161",
+    "TN72CF2624": "MB1A5PCD1REDP7039",
+    "TN72CF2638": "MB1A5PCDXREDP7038",
+    "TN72CJ3255": "MB1CWKHD3SPJG3979",
+    "TN72CJ3259": "MB1CWKHD8SPKG1390",
+    "TN72CJ3282": "MB1CWKHD1SPJG3981",
+    "TN72CJ3793": "MB1CWKHD5SPHG6922",
+    "TN72CJ5960": "MB1CWKHD8SPGH1187",
+    "TN72CJ5979": "MB1CWKHD2SPGH1184",
+    "TN72CJ5996": "MB1CWKHD2SPHG6926",
+    "TN72CJ9158": "MB1CWCHD4SPHG7775",
+    "TN72CJ9198": "MB1CWCHD3SPDH2812",
+    "TN72CJ9443": "MB1CWCHD1SPDH2811",
+    "TN72CJ9482": "MB1CWCHD5SPDH2813",
+    "TN92L5088":  "MB1A5PCD8RECP9545",
+}
+
 
 def _make_session():
     """Create a fresh NullPool engine+session for use inside celery forked workers."""
     engine = create_async_engine(settings.POSTGRES_URL, poolclass=NullPool)
     return sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
 
 logger = logging.getLogger(__name__)
 
@@ -169,9 +196,11 @@ def _safe_float(val) -> float:
 async def ingest_ialert_positions(positions: list[dict]) -> dict:
     """
     Process parsed iALERT positions:
-      1. Update Vehicle GPS coords in PostgreSQL
-      2. Store telemetry in MongoDB
-      3. Broadcast via WebSocket
+      1. Auto-upsert any vehicle not yet in the DB (INSERT … ON CONFLICT DO UPDATE)
+      2. Update Vehicle current GPS coords in PostgreSQL
+      3. Upsert position into gps_locations table (INSERT … ON CONFLICT DO UPDATE)
+      4. Store telemetry in MongoDB
+      5. Broadcast via WebSocket
 
     Returns summary dict with counts.
     """
@@ -184,7 +213,45 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
 
     AsyncSessionLocal = _make_session()
     async with AsyncSessionLocal() as db:
-        # Pre-fetch all vehicle registrations for fast lookup
+
+        # ── 1. Auto-upsert all vehicles from this poll into the vehicles table ──
+        for pos in positions:
+            reg = pos["registration_number"]
+            vin = IALERT_VEHICLE_ROSTER.get(reg, "")
+            await db.execute(
+                text("""
+                    INSERT INTO vehicles (
+                        registration_number, vehicle_type, make,
+                        ownership_type, status, fuel_type,
+                        gps_provider, gps_provider_status,
+                        gps_device_id, chassis_number, owner_name,
+                        created_at, updated_at, is_deleted
+                    ) VALUES (
+                        :reg, 'TRUCK', 'ASHOK LEYLAND',
+                        'OWNED', 'AVAILABLE', 'diesel',
+                        'ialert', 'active',
+                        :vin, :vin, 'Kavya Transports',
+                        NOW(), NOW(), false
+                    )
+                    ON CONFLICT (registration_number) DO UPDATE SET
+                        make              = EXCLUDED.make,
+                        gps_provider      = EXCLUDED.gps_provider,
+                        gps_provider_status = 'active',
+                        gps_device_id     = CASE
+                            WHEN EXCLUDED.gps_device_id <> '' THEN EXCLUDED.gps_device_id
+                            ELSE vehicles.gps_device_id
+                        END,
+                        chassis_number    = CASE
+                            WHEN EXCLUDED.chassis_number <> '' THEN EXCLUDED.chassis_number
+                            ELSE vehicles.chassis_number
+                        END,
+                        updated_at        = NOW()
+                """),
+                {"reg": reg, "vin": vin},
+            )
+        await db.commit()
+
+        # ── 2. Reload vehicle id map after upsert ──
         all_vehicles = await db.execute(
             select(Vehicle.id, Vehicle.registration_number)
             .where(Vehicle.is_deleted == False)
@@ -194,18 +261,17 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
             for row in all_vehicles.all()
         }
 
+        # ── 3. Ingest each position ──
         for pos in positions:
             try:
                 vehicle_id = reg_to_vehicle.get(pos["registration_number"])
                 if not vehicle_id:
-                    logger.debug(
-                        "[iALERT] Vehicle %s not in DB — skipping",
-                        pos["registration_number"],
-                    )
+                    # Should never happen after the upsert above
+                    logger.warning("[iALERT] Vehicle %s still missing after upsert", pos["registration_number"])
                     skipped += 1
                     continue
 
-                # ── 1. Update PostgreSQL Vehicle row ──
+                # 3a. Update current position on the Vehicle row
                 await db.execute(
                     update(Vehicle)
                     .where(Vehicle.id == vehicle_id)
@@ -220,10 +286,52 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
                     )
                 )
 
-                # ── 2. Store in MongoDB ──
+                # 3b. Upsert into gps_locations
+                await db.execute(
+                    text("""
+                        INSERT INTO gps_locations (
+                            vehicle_id, registration_number,
+                            latitude, longitude, altitude,
+                            speed, heading, odometer,
+                            ignition_on, battery_voltage,
+                            source, recorded_at
+                        ) VALUES (
+                            :vehicle_id, :reg,
+                            :lat, :lon, :alt,
+                            :speed, :heading, :odometer,
+                            :ignition_on, :battery_voltage,
+                            'ialert', :recorded_at
+                        )
+                        ON CONFLICT (registration_number, recorded_at) DO UPDATE SET
+                            vehicle_id      = EXCLUDED.vehicle_id,
+                            latitude        = EXCLUDED.latitude,
+                            longitude       = EXCLUDED.longitude,
+                            altitude        = EXCLUDED.altitude,
+                            speed           = EXCLUDED.speed,
+                            heading         = EXCLUDED.heading,
+                            odometer        = EXCLUDED.odometer,
+                            ignition_on     = EXCLUDED.ignition_on,
+                            battery_voltage = EXCLUDED.battery_voltage
+                    """),
+                    {
+                        "vehicle_id":      vehicle_id,
+                        "reg":             pos["registration_number"],
+                        "lat":             pos["latitude"],
+                        "lon":             pos["longitude"],
+                        "alt":             pos["altitude"],
+                        "speed":           pos["speed"],
+                        "heading":         pos["heading"],
+                        "odometer":        pos["odometer"] if pos["odometer"] > 0 else None,
+                        "ignition_on":     pos["ignition_on"],
+                        "battery_voltage": pos["battery_voltage"],
+                        "recorded_at":     pos["timestamp"],
+                    },
+                )
+
+                # 3c. Store in MongoDB (best-effort)
                 await _store_telemetry_mongo(vehicle_id, pos)
 
-                # ── 3. Broadcast via WebSocket ──
+                # 3d. Broadcast via WebSocket (best-effort)
                 await _broadcast_position(vehicle_id, pos)
 
                 updated += 1
@@ -242,6 +350,7 @@ async def ingest_ialert_positions(positions: list[dict]) -> dict:
     if updated > 0:
         logger.info("[iALERT] Ingested %d positions (%d skipped, %d errors)", updated, skipped, errors)
     return summary
+
 
 
 async def _store_telemetry_mongo(vehicle_id: int, pos: dict) -> None:

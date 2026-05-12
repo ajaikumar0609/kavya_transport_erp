@@ -1,7 +1,7 @@
 # GPS Provider Model
 # Transport ERP - PostgreSQL
 
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Text, ForeignKey, Numeric, UniqueConstraint
 from .base import Base
 
 
@@ -40,3 +40,43 @@ class GPSProvider(Base):
             "error_message": self.error_message,
             "api_endpoint": self.api_endpoint,
         }
+
+
+class GpsLocation(Base):
+    """
+    Real-time GPS position snapshot for each vehicle polling cycle.
+    One row per vehicle per timestamp (upserted on conflict).
+    """
+
+    __tablename__ = "gps_locations"
+    __table_args__ = (
+        UniqueConstraint("registration_number", "recorded_at", name="uq_gps_locations_reg_time"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Vehicle linkage
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id", ondelete="SET NULL"), nullable=True, index=True)
+    registration_number = Column(String(20), nullable=False, index=True)
+
+    # Position
+    latitude = Column(Numeric(10, 8), nullable=False)
+    longitude = Column(Numeric(11, 8), nullable=False)
+    altitude = Column(Numeric(10, 2), nullable=True)
+
+    # Motion
+    speed = Column(Numeric(8, 2), nullable=True)       # km/h
+    heading = Column(Numeric(6, 2), nullable=True)     # degrees
+    odometer = Column(Numeric(12, 2), nullable=True)   # km
+
+    # State
+    ignition_on = Column(Boolean, nullable=True)
+    battery_voltage = Column(Numeric(6, 2), nullable=True)
+
+    # Provenance
+    source = Column(String(20), nullable=False, server_default="ialert")
+    recorded_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default="NOW()")
+
+    def __repr__(self):
+        return f"<GpsLocation {self.registration_number} @ {self.recorded_at}>"

@@ -29,6 +29,7 @@ from .driver_requests import DriverLeave, DriverAdvanceRequest, DriverSalaryAdva
 from .expense import Expense, ExpenseCategory as CompanyExpenseCategory, PaymentMethod as CompanyPaymentMethod, ApprovalStatus
 from .payment import PaymentContact, Payout, PaymentSchedule, ExpenseSubmission
 from .reconciliation import ReconciliationSession, ReconciliationLine
+from .gps_provider import GPSProvider, GpsLocation
 
 __all__ = [
     "Base",
@@ -99,4 +100,6 @@ __all__ = [
     "ExpenseSubmission",
     "ReconciliationSession",
     "ReconciliationLine",
+    "GPSProvider",
+    "GpsLocation",
 ]

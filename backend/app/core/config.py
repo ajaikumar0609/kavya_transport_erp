@@ -194,7 +194,7 @@ class Settings(BaseSettings):
     GPS_API_KEY: Optional[str] = None
 
     # Ashok Leyland iALERT — Data as a Service (GPS Telematics)
-    IALERT_API_URL: str = "https://ialert2.ashokleyland.com/ialert/daas/api/getdata"
+    IALERT_API_URL: str = "https://ialertelite.ashokleyland.com/ialert/daas/api/getdata"
     IALERT_API_TOKEN: Optional[str] = None  # Token shared by AL team
     IALERT_POLL_INTERVAL_SECONDS: int = 60  # Polling frequency (seconds)
     IALERT_ENABLED: bool = False  # Enable only after token is configured
