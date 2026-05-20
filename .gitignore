@@ -84,6 +84,21 @@ backend/uploads/documents/
 .env.*
 !.env.example
 
+# One-off diagnostic / migration / seed scripts (no production value)
+backend/_*.py
+backend/create_clerk_user.py
+backend/create_real_users.py
+backend/fix_*.py
+
+# macOS metadata
+**/.DS_Store
+
+# Uploaded user files — root-level uploads dir
+uploads/
+
+# Frontend dev artefacts
+frontend/test_parse.js
+
 
 # Flutter generated / local files
 kavya_app/android/local.properties
