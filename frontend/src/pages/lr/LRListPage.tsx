@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { lrService, marketTripService } from '@/services/dataService';
@@ -17,13 +17,10 @@ import { handleApiError } from '../../utils/handleApiError';
 export default function LRListPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const [searchParams] = useSearchParams();
   const { hasPermission, hasRole } = useAuthStore();
   const isAdmin = hasRole('admin');
-  const isClerk = hasRole('clerk');
   const [filters, setFilters] = useState<FilterParams>({ page: 1, page_size: 20 });
   const [transportTab, setTransportTab] = useState<'' | 'fleet' | 'market'>('');
-  const [myLrs, setMyLrs] = useState<boolean>(searchParams.get('my_lrs') === 'true');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<LR | null>(null);
   const [editItem, setEditItem] = useState<LR | null>(null);

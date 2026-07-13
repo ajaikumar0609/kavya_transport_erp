@@ -1,4 +1,4 @@
-﻿"""
+"""
 IFIAS Tasks -- Public API
 Re-exports from pipeline_tasks + convenience helpers.
 """

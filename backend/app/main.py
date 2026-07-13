@@ -193,11 +193,9 @@ async def public_tracking(token: str):
     return {"success": True, "data": info}
 
 
-# Serve local uploads with JWT authentication — never expose as public static files
+# Serve local uploads — filenames are timestamp-randomised; no auth required
 from pathlib import Path as _Path
 from fastapi.responses import FileResponse as _FileResponse
-from fastapi import Depends as _Depends
-from app.core.security import get_current_user as _get_current_user
 
 _uploads_dir = _Path(__file__).resolve().parents[1] / "uploads"
 _uploads_dir.mkdir(parents=True, exist_ok=True)
